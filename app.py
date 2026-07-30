@@ -48,7 +48,11 @@ def handle_event(payload: EventPayload):
 
     stats_context = get_context(processed)
     prompt = build_prompt(processed, stats_context)
-    insights = generate_insights(prompt)
+
+    try:
+        insights = generate_insights(prompt)
+    except Exception as e:
+        return {"status": "error", "reason": str(e)}
 
     _last_result = {
         "status": "processed",

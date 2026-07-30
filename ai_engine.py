@@ -24,11 +24,18 @@ def generate_insights(prompt: str) -> list[str]:
     raw = response.text.strip()
 
     # Strip markdown code fences if present
-    if raw.startswith("```"):
+    if "```" in raw:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
+
+    # Extract JSON array if buried in surrounding text
+    start = raw.find("[")
+    end = raw.rfind("]") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"No JSON array found in AI response: {raw[:200]}")
+    raw = raw[start:end]
 
     insights = json.loads(raw)
 
