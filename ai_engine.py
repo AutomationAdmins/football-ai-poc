@@ -1,27 +1,31 @@
 import json
 import os
 
-import google.generativeai as genai
+from openai import OpenAI
 
-_model = None
+_client = None
 
 
-def _get_model():
-    global _model
-    if _model is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable is not set")
-        genai.configure(api_key=api_key)
-        _model = genai.GenerativeModel("gemini-2.0-flash")
-    return _model
+            raise ValueError("GROQ_API_KEY environment variable is not set")
+        _client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+    return _client
 
 
 def generate_insights(prompt: str) -> list[str]:
-    model = _get_model()
+    client = _get_client()
 
-    response = model.generate_content(prompt)
-    raw = response.text.strip()
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+        max_tokens=512,
+    )
+    raw = response.choices[0].message.content.strip()
 
     # Strip markdown code fences if present
     if "```" in raw:
