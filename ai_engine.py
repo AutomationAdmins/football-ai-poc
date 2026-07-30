@@ -1,32 +1,27 @@
 import json
 import os
 
-from openai import OpenAI
+import google.generativeai as genai
 
-_client = None
+_model = None
 
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        api_key = os.environ.get("OPENAI_API_KEY")
+def _get_model():
+    global _model
+    if _model is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is not set")
-        _client = OpenAI(api_key=api_key)
-    return _client
+            raise ValueError("GEMINI_API_KEY environment variable is not set")
+        genai.configure(api_key=api_key)
+        _model = genai.GenerativeModel("gemini-1.5-flash")
+    return _model
 
 
 def generate_insights(prompt: str) -> list[str]:
-    client = _get_client()
+    model = _get_model()
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.4,
-        max_tokens=512,
-    )
-
-    raw = response.choices[0].message.content.strip()
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
 
     # Strip markdown code fences if present
     if raw.startswith("```"):
