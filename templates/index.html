@@ -387,6 +387,9 @@
 
             if (data.status === 'ignored') {
                 msg.textContent = `Event ignored: ${data.reason}`;
+            } else if (data.status === 'error') {
+                msg.textContent = `AI error: ${data.reason}`;
+                msg.style.color = '#da3633';
             } else {
                 msg.textContent = 'Insights generated — refreshing dashboard...';
                 setTimeout(() => location.reload(), 600);
