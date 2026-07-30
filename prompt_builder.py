@@ -1,6 +1,17 @@
 import json
 
 
+def _flatten_stats(stats_context: dict) -> dict[str, str]:
+    """Returns a flat dict of every stat label → exact value for grounding checks."""
+    flat = {}
+    for section in stats_context.values():
+        for entity, values in section.items():
+            for k, v in values.items():
+                label = f"{entity} {k.replace('_', ' ')}"
+                flat[label] = v
+    return flat
+
+
 def build_prompt(event: dict, stats_context: dict) -> str:
     event_type = event.get("event_type", "UNKNOWN")
     player = event.get("player", "Unknown Player")
@@ -8,19 +19,15 @@ def build_prompt(event: dict, stats_context: dict) -> str:
     minute = event.get("minute", "?")
     score = event.get("score", "Unknown")
 
-    player_stats = stats_context.get("player_stats", {})
-    team_stats = stats_context.get("team_stats", {})
+    flat = _flatten_stats(stats_context)
 
-    stats_block = ""
-    if player_stats:
-        stats_block += f"\nPlayer Statistics:\n{json.dumps(player_stats, indent=2)}"
-    if team_stats:
-        stats_block += f"\nTeam Statistics:\n{json.dumps(team_stats, indent=2)}"
-
-    if not stats_block:
+    if flat:
+        facts_lines = "\n".join(f"  - {label}: {value}" for label, value in flat.items())
+        stats_block = f"\nAVAILABLE FACTS (these are the ONLY facts you may reference):\n{facts_lines}"
+    else:
         stats_block = "\nNo historical statistics available for this event."
 
-    prompt = f"""You are an assistant for professional football statisticians working in live broadcast TV.
+    prompt = f"""You are a data grounding assistant for professional football statisticians working in live broadcast TV.
 
 Current Event:
 - Event: {event_type}
@@ -30,13 +37,15 @@ Current Event:
 - Current Score: {score}
 {stats_block}
 
-Instructions:
-- Generate exactly five interesting editorial insights suitable for a TV broadcast.
-- Only use the statistics supplied above. Never invent or assume any numbers.
-- Keep each insight under 20 words.
-- Rank them from most interesting to least interesting.
-- Return a JSON array of exactly 5 strings, e.g.:
-  ["Insight one.", "Insight two.", "Insight three.", "Insight four.", "Insight five."]
-- No additional text outside the JSON array."""
+STRICT RULES — these are non-negotiable for live broadcast accuracy:
+1. You MAY ONLY use facts listed above under AVAILABLE FACTS.
+2. Every number you write must come directly from AVAILABLE FACTS. Do not round, estimate, or infer.
+3. Do NOT reference any player, team, or statistic not listed above.
+4. Do NOT use phrases like "reportedly", "estimated", "approximately", or "could be".
+5. If there are not enough facts to produce 5 accurate insights, produce fewer rather than invent.
+6. Keep each insight under 20 words.
+7. Rank them from most interesting to least interesting.
+8. Return ONLY a JSON array of strings, no other text:
+   ["Insight one.", "Insight two.", ...]"""
 
-    return prompt
+    return prompt, flat

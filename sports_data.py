@@ -1,12 +1,45 @@
+import copy
 import json
 import os
 
 _STATS_PATH = os.path.join(os.path.dirname(__file__), "historical_stats.json")
 
+# Maps event type to which player/team counters to increment by 1
+_PLAYER_INCREMENTS = {
+    "GOAL":      ["season_goals", "appearances"],
+    "OWN_GOAL":  ["own_goals", "appearances"],
+    "RED_CARD":  ["red_cards", "appearances"],
+    "PENALTY":   ["appearances"],
+}
+
+_TEAM_INCREMENTS = {
+    "GOAL":      ["goals_scored_this_season"],
+    "OWN_GOAL":  ["goals_conceded_this_season"],
+}
+
 
 def _load_stats() -> dict:
     with open(_STATS_PATH, "r") as f:
         return json.load(f)
+
+
+def _apply_increments(context: dict, event_type: str) -> dict:
+    """Returns a deep copy of context with counters incremented to reflect the current event."""
+    updated = copy.deepcopy(context)
+
+    player_fields = _PLAYER_INCREMENTS.get(event_type, [])
+    for player_stats in updated.get("player_stats", {}).values():
+        for field in player_fields:
+            if field in player_stats:
+                player_stats[field] += 1
+
+    team_fields = _TEAM_INCREMENTS.get(event_type, [])
+    for team_stats in updated.get("team_stats", {}).values():
+        for field in team_fields:
+            if field in team_stats:
+                team_stats[field] += 1
+
+    return updated
 
 
 def get_context(event: dict) -> dict:
@@ -21,4 +54,5 @@ def get_context(event: dict) -> dict:
     if team and team in stats.get("teams", {}):
         context["team_stats"] = {team: stats["teams"][team]}
 
-    return context
+    # Increment counters to reflect the event that just happened
+    return _apply_increments(context, event.get("event_type", ""))

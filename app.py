@@ -47,10 +47,10 @@ def handle_event(payload: EventPayload):
         return {"status": "ignored", "reason": processed["reason"]}
 
     stats_context = get_context(processed)
-    prompt = build_prompt(processed, stats_context)
+    prompt, allowed_facts = build_prompt(processed, stats_context)
 
     try:
-        insights = generate_insights(prompt)
+        insights = generate_insights(prompt, allowed_facts)
     except Exception as e:
         return {"status": "error", "reason": str(e)}
 
