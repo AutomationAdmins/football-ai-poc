@@ -1,0 +1,61 @@
+{
+    "players": {
+        "Josh Windass": {
+            "season_goals": 7,
+            "appearances": 102,
+            "last_goal": "2 matches ago",
+            "team": "Wrexham",
+            "position": "Forward"
+        },
+        "Paul Mullin": {
+            "season_goals": 14,
+            "appearances": 88,
+            "last_goal": "last match",
+            "team": "Wrexham",
+            "position": "Forward"
+        },
+        "Elliot Lee": {
+            "season_goals": 5,
+            "appearances": 76,
+            "last_goal": "4 matches ago",
+            "team": "Wrexham",
+            "position": "Midfielder"
+        },
+        "Ben Foster": {
+            "clean_sheets": 8,
+            "appearances": 30,
+            "saves_this_season": 74,
+            "team": "Wrexham",
+            "position": "Goalkeeper"
+        },
+        "Luke McNally": {
+            "yellow_cards": 4,
+            "red_cards": 0,
+            "appearances": 28,
+            "team": "Wrexham",
+            "position": "Defender"
+        }
+    },
+    "teams": {
+        "Wrexham": {
+            "league_position": 2,
+            "winning_streak": 6,
+            "home_unbeaten": 12,
+            "goals_scored_this_season": 67,
+            "goals_conceded_this_season": 31,
+            "points": 72,
+            "matches_played": 34,
+            "last_5": ["W", "W", "W", "W", "W"]
+        },
+        "Stockport County": {
+            "league_position": 4,
+            "winning_streak": 1,
+            "home_unbeaten": 5,
+            "goals_scored_this_season": 48,
+            "goals_conceded_this_season": 39,
+            "points": 60,
+            "matches_played": 34,
+            "last_5": ["W", "L", "D", "W", "L"]
+        }
+    }
+}

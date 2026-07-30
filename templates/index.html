@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Football AI Editorial Assistant</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 28px;
+            border-bottom: 1px solid #21262d;
+            padding-bottom: 16px;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #58a6ff;
+        }
+
+        header span.badge {
+            background: #238636;
+            color: #fff;
+            font-size: 0.72rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .card h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #8b949e;
+            margin-bottom: 14px;
+            font-weight: 600;
+        }
+
+        .event-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 16px;
+            font-size: 0.95rem;
+        }
+
+        .event-grid .label { color: #8b949e; }
+        .event-grid .value { font-weight: 600; }
+
+        .badge-event {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .badge-GOAL       { background: #238636; color: #fff; }
+        .badge-PENALTY    { background: #e3b341; color: #000; }
+        .badge-RED_CARD   { background: #da3633; color: #fff; }
+        .badge-OWN_GOAL   { background: #da3633; color: #fff; }
+        .badge-VAR_DECISION { background: #388bfd; color: #fff; }
+        .badge-HALF_TIME  { background: #6e40c9; color: #fff; }
+        .badge-FULL_TIME  { background: #6e40c9; color: #fff; }
+        .badge-ignored    { background: #30363d; color: #8b949e; }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .stats-table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .stats-table td:first-child { color: #8b949e; }
+        .stats-table td:last-child { font-weight: 600; text-align: right; }
+
+        .insights-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+        .insight-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 6px;
+            padding: 12px 14px;
+        }
+
+        .insight-item.approved { border-color: #238636; background: #0f2d1a; }
+        .insight-item.rejected { border-color: #da3633; background: #2d1010; opacity: 0.6; }
+
+        .insight-rank {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #58a6ff;
+            min-width: 24px;
+            line-height: 1.4;
+        }
+
+        .insight-text {
+            flex: 1;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .insight-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        .btn {
+            border: none;
+            border-radius: 5px;
+            padding: 5px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .btn:hover { opacity: 0.8; }
+        .btn-approve { background: #238636; color: #fff; }
+        .btn-reject  { background: #da3633; color: #fff; }
+
+        .decision-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 10px;
+            letter-spacing: 0.05em;
+        }
+
+        .decision-badge.approved { background: #238636; color: #fff; }
+        .decision-badge.rejected { background: #da3633; color: #fff; }
+
+        .empty-state {
+            color: #8b949e;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
+        /* Send event form */
+        .send-form {
+            grid-column: 1 / -1;
+        }
+
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 0.78rem; color: #8b949e; }
+
+        .form-group select,
+        .form-group input {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 5px;
+            color: #e6edf3;
+            padding: 6px 10px;
+            font-size: 0.9rem;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+
+        .btn-send {
+            background: #1f6feb;
+            color: #fff;
+            padding: 7px 20px;
+            font-size: 0.9rem;
+            align-self: flex-end;
+        }
+
+        #status-msg {
+            font-size: 0.85rem;
+            color: #58a6ff;
+            margin-top: 10px;
+            min-height: 1.2em;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>⚽ Football AI Editorial Assistant</h1>
+    <span class="badge">POC</span>
+</header>
+
+<!-- Send Event Form -->
+<div class="card send-form" style="margin-bottom: 20px;">
+    <h2>Send Live Event</h2>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Event Type</label>
+            <select id="f-event">
+                <option value="GOAL">GOAL</option>
+                <option value="PENALTY">PENALTY</option>
+                <option value="RED_CARD">RED_CARD</option>
+                <option value="OWN_GOAL">OWN_GOAL</option>
+                <option value="VAR_DECISION">VAR_DECISION</option>
+                <option value="HALF_TIME">HALF_TIME</option>
+                <option value="FULL_TIME">FULL_TIME</option>
+                <option value="PASS">PASS (ignored)</option>
+                <option value="THROW_IN">THROW_IN (ignored)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Player</label>
+            <input id="f-player" type="text" value="Josh Windass" placeholder="Player name" />
+        </div>
+        <div class="form-group">
+            <label>Team</label>
+            <input id="f-team" type="text" value="Wrexham" placeholder="Team name" />
+        </div>
+        <div class="form-group">
+            <label>Minute</label>
+            <input id="f-minute" type="number" value="87" min="1" max="120" style="width:80px" />
+        </div>
+        <div class="form-group">
+            <label>Score</label>
+            <input id="f-score" type="text" value="2-1" placeholder="e.g. 2-1" style="width:80px" />
+        </div>
+        <button class="btn btn-send" onclick="sendEvent()">Send Event</button>
+    </div>
+    <div id="status-msg"></div>
+</div>
+
+<div class="grid">
+
+    <!-- Live Event -->
+    <div class="card">
+        <h2>Live Event</h2>
+        {% if result and result.event %}
+            {% set ev = result.event %}
+            <div class="event-grid">
+                <span class="label">Type</span>
+                <span class="value">
+                    <span class="badge-event badge-{{ ev.event_type | default('ignored') }}">
+                        {{ ev.event_type | default(result.event.event | upper) }}
+                    </span>
+                </span>
+                {% if ev.player %}
+                <span class="label">Player</span>
+                <span class="value">{{ ev.player }}</span>
+                {% endif %}
+                {% if ev.team %}
+                <span class="label">Team</span>
+                <span class="value">{{ ev.team }}</span>
+                {% endif %}
+                {% if ev.minute %}
+                <span class="label">Minute</span>
+                <span class="value">{{ ev.minute }}'</span>
+                {% endif %}
+                {% if ev.score %}
+                <span class="label">Score</span>
+                <span class="value">{{ ev.score }}</span>
+                {% endif %}
+                <span class="label">Status</span>
+                <span class="value">
+                    {% if result.status == "ignored" %}
+                        <span class="badge-event badge-ignored">IGNORED</span>
+                    {% else %}
+                        <span class="badge-event badge-GOAL" style="background:#1f6feb">PROCESSED</span>
+                    {% endif %}
+                </span>
+            </div>
+        {% else %}
+            <p class="empty-state">No event received yet. Send an event using the form above.</p>
+        {% endif %}
+    </div>
+
+    <!-- Historical Stats -->
+    <div class="card">
+        <h2>Historical Statistics</h2>
+        {% if result and result.stats %}
+            {% for entity, stats in result.stats.items() %}
+                {% for name, values in stats.items() %}
+                    <div style="margin-bottom:12px">
+                        <div style="font-weight:600; font-size:0.92rem; margin-bottom:6px; color:#58a6ff;">{{ name }}</div>
+                        <table class="stats-table">
+                            {% for k, v in values.items() %}
+                            <tr>
+                                <td>{{ k | replace("_", " ") | title }}</td>
+                                <td>
+                                    {% if v is iterable and v is not string %}
+                                        {{ v | join(", ") }}
+                                    {% else %}
+                                        {{ v }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        {% else %}
+            <p class="empty-state">No statistics loaded yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- AI Insights -->
+    <div class="card" style="grid-column: 1 / -1;">
+        <h2>AI-Generated Insights &mdash; Statistician Review</h2>
+        {% if result and result.insights %}
+            <ul class="insights-list" id="insights-list">
+                {% for item in result.insights %}
+                <li class="insight-item {% if item.decision %}{{ item.decision }}{% endif %}" id="insight-{{ loop.index0 }}">
+                    <span class="insight-rank">#{{ loop.index }}</span>
+                    <span class="insight-text">{{ item.text }}</span>
+                    <div class="insight-actions">
+                        {% if item.decision %}
+                            <span class="decision-badge {{ item.decision }}">{{ item.decision | upper }}</span>
+                        {% else %}
+                            <button class="btn btn-approve" onclick="decide({{ loop.index0 }}, 'approve')">Approve</button>
+                            <button class="btn btn-reject"  onclick="decide({{ loop.index0 }}, 'reject')">Reject</button>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        {% elif result and result.status == "ignored" %}
+            <p class="empty-state">Event was ignored — no AI insights generated.</p>
+        {% else %}
+            <p class="empty-state">No insights yet. Send an interesting event to generate AI insights.</p>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+    async function sendEvent() {
+        const payload = {
+            event:  document.getElementById('f-event').value,
+            player: document.getElementById('f-player').value || null,
+            team:   document.getElementById('f-team').value || null,
+            minute: parseInt(document.getElementById('f-minute').value) || null,
+            score:  document.getElementById('f-score').value || null,
+        };
+
+        const msg = document.getElementById('status-msg');
+        msg.textContent = 'Sending event...';
+
+        try {
+            const res = await fetch('/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+
+            if (data.status === 'ignored') {
+                msg.textContent = `Event ignored: ${data.reason}`;
+            } else {
+                msg.textContent = 'Insights generated — refreshing dashboard...';
+                setTimeout(() => location.reload(), 600);
+            }
+        } catch (e) {
+            msg.textContent = `Error: ${e.message}`;
+        }
+    }
+
+    async function decide(index, action) {
+        const endpoint = action === 'approve' ? `/approve/${index}` : `/reject/${index}`;
+        await fetch(endpoint, { method: 'POST' });
+
+        const item = document.getElementById(`insight-${index}`);
+        item.classList.add(action === 'approve' ? 'approved' : 'rejected');
+
+        const actionsDiv = item.querySelector('.insight-actions');
+        const badge = document.createElement('span');
+        badge.className = `decision-badge ${action === 'approve' ? 'approved' : 'rejected'}`;
+        badge.textContent = action === 'approve' ? 'APPROVED' : 'REJECTED';
+        actionsDiv.innerHTML = '';
+        actionsDiv.appendChild(badge);
+    }
+</script>
+
+</body>
+</html>
