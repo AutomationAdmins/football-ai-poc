@@ -88,6 +88,11 @@ Manchester City, Manchester United, Liverpool or Arsenal should not receive high
 4. Historical milestones should increase priority only when they are exceptional and supported by the supplied facts.
 
 5. Base every decision ONLY on the supplied context.
+6. For each event include a confidence score (integer 0–100) representing how clear this editorial decision was:
+   - 90–100 = one event is obviously more important, no real contest
+   - 70–89  = clear preference, but the other event has some merit
+   - 50–69  = genuinely close — both events have strong editorial case
+   - Below 50 = near coin-flip, editorial judgement call
 
 Return ONLY JSON.
 
@@ -102,12 +107,14 @@ Example
         {{
             "event_index":1,
             "priority":"Critical",
-            "reason":"Promotion race changed."
+            "confidence":72,
+            "reason":"Promotion race changed — equaliser keeps Leeds in automatic promotion. Close call as the milestone goal has high audience draw."
         }},
         {{
             "event_index":0,
             "priority":"High",
-            "reason":"Historic player milestone."
+            "confidence":72,
+            "reason":"Historic player milestone but does not change the league table directly."
         }}
     ]
 }}
@@ -151,6 +158,16 @@ Rules
 7. Every number in your output must appear in the supplied Context.
 8. Pull key numbers from commentator_facts, player, and team sections — do not write vague lines without stats.
 
+Data Specificity Rules — CRITICAL:
+
+- match_context insight MUST follow this exact format: "[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]'." Then append one additional stat. Always use commentator_facts.score and commentator_facts.minute.
+- player_stat insight MUST name the player and include at least one specific number. Never say "23 goals this season" — always say "[Name] has 23 goals this season."
+- team_stat insight MUST name the team and include at least two numbers (e.g. points, position, streak, goal difference, home record).
+- season_stakes insight MUST name the team and state the exact consequence clearly.
+- opponent_impact insight MUST name the opponent with at least one number or specific consequence.
+- milestone insight MUST state the player name, current tally, and the exact target.
+- Every insight that references a live moment MUST include the score and minute in the format "— [Score] at [Minute]'".
+
 Categories for insights (use exactly one per insight):
 - season_stakes
 - match_context
@@ -160,7 +177,7 @@ Categories for insights (use exactly one per insight):
 - head_to_head
 - milestone
 
-Return ONLY JSON.
+Return ONLY JSON. Do NOT include a facts_used field.
 
 Example
 
@@ -168,24 +185,24 @@ Example
     "lead_story": "Summerville equalises in the 87th minute — Leeds are one result away from the Premier League.",
     "insights": [
         {{
+            "category": "match_context",
+            "line": "Summerville scores the equaliser for Leeds against Sunderland — 1-1 at 87', his 5th goal in as many games."
+        }},
+        {{
             "category": "player_stat",
-            "line": "5 goals in 5 consecutive matches; 4 career goals against Sunderland.",
-            "facts_used": ["consecutive_scoring_matches", "goals_vs_sunderland_career"]
+            "line": "Summerville has 23 Championship goals this season and 4 career goals against Sunderland."
         }},
         {{
             "category": "team_stat",
-            "line": "Leeds on 87 points with a 5-game win streak and 21 home games unbeaten.",
-            "facts_used": ["points", "winning_streak", "home_unbeaten"]
+            "line": "Leeds on 87 points, 1st in the Championship, unbeaten in 21 home games."
         }},
         {{
             "category": "season_stakes",
-            "line": "A draw confirms automatic promotion after 3 seasons outside the top flight.",
-            "facts_used": ["promotion_stakes", "years_out_of_premier_league"]
+            "line": "Leeds are promoted automatically with a win or draw today — 3 seasons outside the Premier League."
         }},
         {{
             "category": "opponent_impact",
-            "line": "Sunderland need a win to strengthen their playoff seeding.",
-            "facts_used": ["opponent_line"]
+            "line": "Sunderland must win to secure a higher playoff seeding — currently 3rd with 79 points."
         }}
     ]
 }}
@@ -196,3 +213,4 @@ Context
 """
 
     return prompt
+

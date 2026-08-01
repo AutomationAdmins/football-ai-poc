@@ -146,6 +146,8 @@ def handle_event(payload: EventBatchPayload):
 
         valid_events[idx]["editorial_reason"] = item["reason"]
 
+        valid_events[idx]["confidence"] = item.get("confidence")
+
         valid_events[idx]["rank_order"] = rank_order
 
     #

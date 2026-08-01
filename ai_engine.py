@@ -2,7 +2,12 @@ import json
 import os
 import re
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+# Load environment variables from .env file
+load_dotenv()
+
 
 _client = None
 
@@ -98,6 +103,7 @@ def _chat(prompt: str, max_tokens=800):
     client = _get_client()
 
     response = client.chat.completions.create(
+        #model="llama-3.3-70b-versatile",
         model="llama-3.1-8b-instant",
         temperature=0,
         max_tokens=max_tokens,
