@@ -23,6 +23,10 @@ def _load_stats() -> dict:
         return json.load(f)
 
 
+def _matches_league(entity: dict, league: str | None) -> bool:
+    return not league or entity.get("league") == league
+
+
 def _apply_increments(context: dict, event_type: str) -> dict:
     """Returns a deep copy of context with counters incremented to reflect the current event."""
     updated = copy.deepcopy(context)
@@ -46,12 +50,21 @@ def get_context(event: dict) -> dict:
     stats = _load_stats()
     context = {}
 
+    league = event.get("league")
+    fixture = event.get("fixture")
+
+    if league and league in stats.get("leagues", {}):
+        context["league_stats"] = {league: stats["leagues"][league]}
+
+    if fixture and fixture in stats.get("fixtures", {}):
+        context["fixture_stats"] = {fixture: stats["fixtures"][fixture]}
+
     player = event.get("player")
-    if player and player in stats.get("players", {}):
+    if player and player in stats.get("players", {}) and _matches_league(stats["players"][player], league):
         context["player_stats"] = {player: stats["players"][player]}
 
     team = event.get("team")
-    if team and team in stats.get("teams", {}):
+    if team and team in stats.get("teams", {}) and _matches_league(stats["teams"][team], league):
         context["team_stats"] = {team: stats["teams"][team]}
 
     # Increment counters to reflect the event that just happened

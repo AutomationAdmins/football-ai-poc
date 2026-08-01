@@ -1,19 +1,32 @@
 import json
 
 
+def _flatten_value(flat: dict[str, str], prefix: str, value) -> None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            _flatten_value(flat, f"{prefix} {key.replace('_', ' ')}", nested)
+        return
+
+    if isinstance(value, list):
+        flat[prefix] = ", ".join(str(item) for item in value)
+        return
+
+    flat[prefix] = value
+
+
 def _flatten_stats(stats_context: dict) -> dict[str, str]:
     """Returns a flat dict of every stat label → exact value for grounding checks."""
     flat = {}
     for section in stats_context.values():
         for entity, values in section.items():
-            for k, v in values.items():
-                label = f"{entity} {k.replace('_', ' ')}"
-                flat[label] = v
+            _flatten_value(flat, entity, values)
     return flat
 
 
 def build_prompt(event: dict, stats_context: dict) -> str:
     event_type = event.get("event_type", "UNKNOWN")
+    league = event.get("league", "Unknown League")
+    fixture = event.get("fixture", "Unknown Fixture")
     player = event.get("player", "Unknown Player")
     team = event.get("team", "Unknown Team")
     minute = event.get("minute", "?")
@@ -31,6 +44,8 @@ def build_prompt(event: dict, stats_context: dict) -> str:
 
 Current Event:
 - Event: {event_type}
+- League: {league}
+- Fixture: {fixture}
 - Player: {player}
 - Team: {team}
 - Minute: {minute}'

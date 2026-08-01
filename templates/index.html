@@ -241,12 +241,28 @@
             </select>
         </div>
         <div class="form-group">
+            <label>League</label>
+            <select id="f-league" onchange="applyLeaguePreset()">
+                <option value="Premier League">Premier League</option>
+                <option value="EFL Championship">EFL Championship</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Fixture</label>
+            <select id="f-fixture">
+                <option value="Arsenal vs Chelsea">Arsenal vs Chelsea</option>
+                <option value="Manchester City vs Liverpool">Manchester City vs Liverpool</option>
+                <option value="Leeds United vs Sunderland">Leeds United vs Sunderland</option>
+                <option value="Sheffield United vs Middlesbrough">Sheffield United vs Middlesbrough</option>
+            </select>
+        </div>
+        <div class="form-group">
             <label>Player</label>
-            <input id="f-player" type="text" value="Josh Windass" placeholder="Player name" />
+            <input id="f-player" type="text" value="Bukayo Saka" placeholder="Player name" />
         </div>
         <div class="form-group">
             <label>Team</label>
-            <input id="f-team" type="text" value="Wrexham" placeholder="Team name" />
+            <input id="f-team" type="text" value="Arsenal" placeholder="Team name" />
         </div>
         <div class="form-group">
             <label>Minute</label>
@@ -278,6 +294,14 @@
                 {% if ev.player %}
                 <span class="label">Player</span>
                 <span class="value">{{ ev.player }}</span>
+                {% endif %}
+                {% if ev.league %}
+                <span class="label">League</span>
+                <span class="value">{{ ev.league }}</span>
+                {% endif %}
+                {% if ev.fixture %}
+                <span class="label">Fixture</span>
+                <span class="value">{{ ev.fixture }}</span>
                 {% endif %}
                 {% if ev.team %}
                 <span class="label">Team</span>
@@ -365,9 +389,40 @@
 </div>
 
 <script>
+    const leaguePresets = {
+        'Premier League': {
+            fixture: 'Arsenal vs Chelsea',
+            team: 'Arsenal',
+            player: 'Bukayo Saka',
+            score: '2-1',
+        },
+        'EFL Championship': {
+            fixture: 'Leeds United vs Sunderland',
+            team: 'Leeds United',
+            player: 'Crysencio Summerville',
+            score: '1-1',
+        },
+    };
+
+    function applyLeaguePreset() {
+        const league = document.getElementById('f-league').value;
+        const preset = leaguePresets[league];
+
+        if (!preset) {
+            return;
+        }
+
+        document.getElementById('f-fixture').value = preset.fixture;
+        document.getElementById('f-team').value = preset.team;
+        document.getElementById('f-player').value = preset.player;
+        document.getElementById('f-score').value = preset.score;
+    }
+
     async function sendEvent() {
         const payload = {
             event:  document.getElementById('f-event').value,
+            league: document.getElementById('f-league').value || null,
+            fixture: document.getElementById('f-fixture').value || null,
             player: document.getElementById('f-player').value || null,
             team:   document.getElementById('f-team').value || null,
             minute: parseInt(document.getElementById('f-minute').value) || null,
@@ -413,6 +468,8 @@
         actionsDiv.innerHTML = '';
         actionsDiv.appendChild(badge);
     }
+
+    applyLeaguePreset();
 </script>
 
 </body>

@@ -20,6 +20,8 @@ _last_result: dict = {}
 
 class EventPayload(BaseModel):
     event: str
+    league: str | None = None
+    fixture: str | None = None
     player: str | None = None
     team: str | None = None
     minute: int | None = None
