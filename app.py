@@ -4,14 +4,25 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from ai_engine import generate_insights
+from ai_engine import (
+    generate_insights,
+    rank_events,
+)
+
 from event_processor import process_event
-from prompt_builder import build_prompt
+
 from sports_data import get_context
+
+from editorial_context import build_editorial_context
+
+from prompt_builder import (
+    build_editorial_prompt,
+    build_insight_prompt,
+)
 
 app = FastAPI(title="Football AI Editorial Assistant")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+#app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # In-memory store of the most recent processed events for the dashboard
@@ -34,26 +45,29 @@ class EventBatchPayload(BaseModel):
 
 
 def _process_input(payload: EventInputPayload) -> dict:
+
     processed = process_event(payload.model_dump())
 
     if processed["status"] == "ignored":
-        return {"status": "ignored", "event": processed, "reason": processed["reason"]}
+        return {
+            "status": "ignored",
+            "event": processed,
+            "reason": processed["reason"],
+        }
 
     stats_context = get_context(processed)
-    prompt, allowed_facts = build_prompt(processed, stats_context)
 
-    try:
-        insights = generate_insights(prompt, allowed_facts)
-    except Exception as exc:
-        return {"status": "error", "event": processed, "reason": str(exc)}
+    editorial_context = build_editorial_context(
+        processed,
+        stats_context,
+    )
 
     return {
         "status": "processed",
         "event": processed,
         "stats": stats_context,
-        "insights": [{"text": insight, "decision": None} for insight in insights],
+        "editorial_context": editorial_context,
     }
-
 
 @app.get("/health")
 def health():
@@ -72,6 +86,7 @@ def stats_dashboard(request: Request):
 
 @app.post("/event")
 def handle_event(payload: EventBatchPayload):
+
     global _last_result
 
     results = [
@@ -79,11 +94,100 @@ def handle_event(payload: EventBatchPayload):
         _process_input(payload.input_2),
     ]
 
-    _last_result = {"results": results}
+    valid_events = [
+        r for r in results
+        if r["status"] == "processed"
+    ]
+
+    #
+    # Nothing to compare
+    #
+
+    if not valid_events:
+
+        _last_result = {"results": results}
+
+        return {
+            "status": "processed",
+            "results": results,
+        }
+
+    #
+    # Editorial Ranking
+    #
+
+    ranking_prompt = build_editorial_prompt(
+        [
+            e["editorial_context"]
+            for e in valid_events
+        ]
+    )
+
+    ranking = rank_events(ranking_prompt)
+
+    print("\n========== AI RANKING ==========")
+    print(ranking)
+    print("===============================\n")
+
+    for item in ranking["ranking"]:
+
+        idx = item["event_index"]
+
+        valid_events[idx]["priority"] = item["priority"]
+
+        valid_events[idx]["editorial_reason"] = item["reason"]
+
+    #
+    # Highest first
+    #
+
+    valid_events.sort(
+        key=lambda x: (
+            {
+                "Critical": 4,
+                "High": 3,
+                "Medium": 2,
+                "Low": 1,
+            }.get(
+                x.get("priority"),
+                0,
+            )
+        ),
+        reverse=True,
+    )
+
+    #
+    # Generate Insights
+    #
+
+    for event in valid_events:
+
+        prompt = build_insight_prompt(
+            event["editorial_context"]
+        )
+
+        allowed = event["editorial_context"]["editorial_facts"]
+
+        insights = generate_insights(
+            prompt,
+            allowed,
+        )
+
+        event["insights"] = [
+            {
+                "text": x,
+                "decision": None,
+            }
+            for x in insights
+        ]
+
+    _last_result = {
+        "results": valid_events
+    }
 
     return {
         "status": "processed",
-        "results": results,
+        "results": valid_events,
     }
 
 @app.post("/approve/{event_index}/{insight_index}")

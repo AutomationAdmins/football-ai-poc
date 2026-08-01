@@ -1,71 +1,152 @@
 import json
 
 
-def _flatten_value(flat: dict[str, str], prefix: str, value) -> None:
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            _flatten_value(flat, f"{prefix} {key.replace('_', ' ')}", nested)
-        return
+def _clean_context(context: dict) -> dict:
+    """
+    Removes None values so the LLM receives only useful facts.
+    """
 
-    if isinstance(value, list):
-        flat[prefix] = ", ".join(str(item) for item in value)
-        return
+    if isinstance(context, dict):
 
-    flat[prefix] = value
+        cleaned = {}
+
+        for key, value in context.items():
+
+            if value is None:
+                continue
+
+            if isinstance(value, dict):
+                nested = _clean_context(value)
+
+                if nested:
+                    cleaned[key] = nested
+
+            elif isinstance(value, list):
+                cleaned[key] = value
+
+            else:
+                cleaned[key] = value
+
+        return cleaned
+
+    return context
 
 
-def _flatten_stats(stats_context: dict) -> dict[str, str]:
-    """Returns a flat dict of every stat label → exact value for grounding checks."""
-    flat = {}
-    for section in stats_context.values():
-        for entity, values in section.items():
-            _flatten_value(flat, entity, values)
-    return flat
+def build_editorial_prompt(editorial_contexts: list[dict]) -> str:
+    """
+    Prompt for comparing simultaneous events.
+    """
+
+    cleaned_events = [
+        _clean_context(event)
+        for event in editorial_contexts
+    ]
+
+    prompt = f"""
+You are the Senior Editorial Producer for Soccer Saturday.
+
+Several football events have occurred simultaneously.
+
+Your responsibility is NOT to generate statistics.
+
+Your responsibility is to determine which event should be shown first on live television.
+
+Your decision must be based ONLY on the supplied facts.
+
+Never invent facts.
+
+Never infer facts.
+
+Never assume anything.
+
+When comparing simultaneous events, think like the Senior Producer of a live Soccer Saturday broadcast.
+
+Editorial Principles
+
+1. Prioritise events that CHANGE the competitive outcome.
+
+Examples include:
+
+- Equalising goals
+- Winning goals
+- Goals that change league position
+- Goals affecting promotion
+- Goals affecting relegation
+- Goals affecting qualification
+- Goals affecting the title race
+
+2. A routine goal extending an already comfortable lead is usually LESS important than a goal that changes the season outcome.
+
+Example:
+
+A fourth goal in a 4-0 match is usually less editorially significant than an equaliser that keeps a team on course for promotion.
+
+3. Do NOT favour famous clubs automatically.
+
+Manchester City, Manchester United, Liverpool or Arsenal should not receive higher priority solely because of club size.
+
+4. Historical milestones should increase priority only when they are exceptional and supported by the supplied facts.
+
+5. Base every decision ONLY on the supplied context.
+
+Return ONLY JSON.
+
+Do NOT use external football knowledge.
+
+Return ONLY JSON.
+
+Example
+
+{{
+    "ranking":[
+        {{
+            "event_index":1,
+            "priority":"Critical",
+            "reason":"Promotion race changed."
+        }},
+        {{
+            "event_index":0,
+            "priority":"High",
+            "reason":"Historic player milestone."
+        }}
+    ]
+}}
+
+Editorial Context
+
+{json.dumps(cleaned_events, indent=2)}
+"""
+
+    return prompt
 
 
-def build_prompt(event: dict, stats_context: dict) -> str:
-    event_type = event.get("event_type", "UNKNOWN")
-    league = event.get("league", "Unknown League")
-    player = event.get("player", "Unknown Player")
-    team = event.get("team", "Unknown Team")
-    opponent = event.get("opponent", "Unknown Opponent")
-    minute = event.get("minute", "?")
-    score = event.get("score", "Unknown")
+def build_insight_prompt(editorial_context: dict):
+    """
+    Prompt for generating editorial insights
+    after an event has been selected.
+    """
 
-    fixture = "Unknown Fixture"
-    if stats_context.get("fixture_stats"):
-        fixture = next(iter(stats_context["fixture_stats"].keys()))
+    cleaned = _clean_context(editorial_context)
 
-    flat = _flatten_stats(stats_context)
+    prompt = f"""
+You are an editorial football statistician.
 
-    if flat:
-        facts_lines = "\n".join(f"  - {label}: {value}" for label, value in flat.items())
-        stats_block = f"\nAVAILABLE FACTS (these are the ONLY facts you may reference):\n{facts_lines}"
-    else:
-        stats_block = "\nNo historical statistics available for this event."
+Generate editorial insights for this event.
 
-    prompt = f"""You are a data grounding assistant for professional football statisticians working in live broadcast TV.
+build_insight_prompt
 
-Current Event:
-- Event: {event_type}
-- League: {league}
-- Fixture: {fixture}
-- Player: {player}
-- Team: {team}
-- Opponent: {opponent}
-- Minute: {minute}'
-- Current Score: {score}
-{stats_block}
+Return ONLY JSON.
 
-STRICT RULES — these are non-negotiable for live broadcast accuracy:
-1. You MAY ONLY use facts listed above under AVAILABLE FACTS.
-2. Every number you write must come directly from AVAILABLE FACTS. Do not round, estimate, or infer.
-3. Do NOT reference any player, team, or statistic not listed above.
-4. Do NOT use phrases like "reportedly", "estimated", "approximately", or "could be".
-5. If there are not enough facts to produce 5 accurate insights, produce fewer rather than invent.
-6. Keep each insight under 20 words.
-7. Rank them from most interesting to least interesting.
-8. Return ONLY a JSON array of strings, no other text:
-   ["Insight one.", "Insight two.", ...]"""
+Example
 
-    return prompt, flat
+[
+    "Saka has now scored 23 league goals this season.",
+    "This is his seventh goal against Chelsea."
+]
+
+Context
+
+{json.dumps(cleaned, indent=2)}
+"""
+
+    return prompt

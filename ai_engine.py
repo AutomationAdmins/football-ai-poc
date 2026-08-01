@@ -7,73 +7,145 @@ from openai import OpenAI
 _client = None
 
 
-def _get_client() -> OpenAI:
+def _get_client():
+
     global _client
+
     if _client is None:
+
         api_key = os.environ.get("GROQ_API_KEY")
+
         if not api_key:
-            raise ValueError("GROQ_API_KEY environment variable is not set")
-        _client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+            raise ValueError("GROQ_API_KEY not configured")
+
+        _client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
+
     return _client
 
 
-def _extract_numbers(text: str) -> set[str]:
-    """Returns all numeric tokens found in a string."""
-    return set(re.findall(r'\b\d+(?:\.\d+)?\b', text))
+# ---------------------------------------------------------
+# Generic Helpers
+# ---------------------------------------------------------
+
+def _extract_numbers(text: str):
+
+    return set(re.findall(r"\b\d+(?:\.\d+)?\b", text))
 
 
-def _ground_insights(insights: list[str], allowed_facts: dict) -> list[str]:
-    """Removes any insight containing a number not present in the supplied facts."""
-    allowed_numbers = set()
-    for v in allowed_facts.values():
-        allowed_numbers.update(_extract_numbers(str(v)))
+def _strip_json(raw: str):
 
-    grounded = []
-    for insight in insights:
-        numbers_in_insight = _extract_numbers(insight)
-        if numbers_in_insight.issubset(allowed_numbers):
-            grounded.append(insight)
-        # silently drop insights that reference numbers not in supplied stats
+    raw = raw.strip()
 
-    return grounded
+    if "```" in raw:
+
+        raw = raw.split("```")[1]
+
+        if raw.startswith("json"):
+            raw = raw[4:]
+
+        raw = raw.strip()
+
+    return raw
 
 
-def generate_insights(prompt: str, allowed_facts: dict) -> list[str]:
+def _chat(prompt: str, max_tokens=800):
+
     client = _get_client()
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,  # deterministic — zero tolerance for creative invention
-        max_tokens=512,
+        temperature=0,
+        max_tokens=max_tokens,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
     )
-    raw = response.choices[0].message.content.strip()
 
-    # Strip markdown code fences if present
-    if "```" in raw:
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    return response.choices[0].message.content
 
-    # Extract JSON array if buried in surrounding text
+
+# ---------------------------------------------------------
+# Editorial Ranking
+# ---------------------------------------------------------
+
+def rank_events(prompt: str):
+
+    raw = _chat(prompt)
+
+    raw = _strip_json(raw)
+
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+
+    if start == -1:
+        raise ValueError("Editorial engine returned invalid JSON.")
+
+    result = json.loads(raw[start:end])
+
+    if "ranking" not in result:
+        raise ValueError("Missing ranking.")
+
+    return result
+
+
+# ---------------------------------------------------------
+# Insight Generation
+# ---------------------------------------------------------
+
+def _ground_insights(insights, allowed_facts):
+
+    allowed_numbers = set()
+
+    for value in allowed_facts.values():
+        allowed_numbers.update(
+            _extract_numbers(str(value))
+        )
+
+    grounded = []
+
+    for insight in insights:
+
+        nums = _extract_numbers(insight)
+
+        if nums.issubset(allowed_numbers):
+            grounded.append(insight)
+
+    return grounded
+
+
+def generate_insights(prompt, allowed_facts):
+
+    raw = _chat(prompt)
+
+    raw = _strip_json(raw)
+
     start = raw.find("[")
     end = raw.rfind("]") + 1
-    if start == -1 or end == 0:
-        raise ValueError(f"No JSON array found in AI response: {raw[:200]}")
-    raw = raw[start:end]
 
-    insights = json.loads(raw)
+    if start == -1:
+        raise ValueError("No JSON array returned.")
 
-    if not isinstance(insights, list):
-        raise ValueError("AI response was not a JSON array")
+    insights = json.loads(raw[start:end])
 
-    insights = [str(item) for item in insights[:5]]
+    insights = [
+        str(x)
+        for x in insights[:5]
+    ]
 
-    # Grounding check — strip any insight containing a hallucinated number
-    grounded = _ground_insights(insights, allowed_facts)
+    grounded = _ground_insights(
+        insights,
+        allowed_facts
+    )
 
     if not grounded:
-        raise ValueError("All AI insights were rejected by the grounding validator — no verified facts found.")
+        raise ValueError(
+            "Every insight failed grounding."
+        )
 
     return grounded
