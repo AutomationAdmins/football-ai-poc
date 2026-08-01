@@ -459,20 +459,21 @@
         <h2>AI-Generated Insights &mdash; Statistician Review</h2>
         {% if result and result.results %}
             {% for result_item in result.results %}
+            {% set result_index = loop.index0 %}
             <div style="margin-bottom: 18px;">
                 <div class="result-section-title">Input {{ loop.index }}</div>
                 {% if result_item.insights %}
-                <ul class="insights-list" id="insights-list-{{ loop.index0 }}">
+                <ul class="insights-list" id="insights-list-{{ result_index }}">
                     {% for item in result_item.insights %}
-                    <li class="insight-item {% if item.decision %}{{ item.decision }}{% endif %}" id="insight-{{ loop.parent.index0 }}-{{ loop.index0 }}">
+                    <li class="insight-item {% if item.decision %}{{ item.decision }}{% endif %}" id="insight-{{ result_index }}-{{ loop.index0 }}">
                         <span class="insight-rank">#{{ loop.index }}</span>
                         <span class="insight-text">{{ item.text }}</span>
                         <div class="insight-actions">
                             {% if item.decision %}
                                 <span class="decision-badge {{ item.decision }}">{{ item.decision | upper }}</span>
                             {% else %}
-                                <button class="btn btn-approve" onclick="decide({{ loop.parent.index0 }}, {{ loop.index0 }}, 'approve')">Approve</button>
-                                <button class="btn btn-reject" onclick="decide({{ loop.parent.index0 }}, {{ loop.index0 }}, 'reject')">Reject</button>
+                                <button class="btn btn-approve" onclick="decide({{ result_index }}, {{ loop.index0 }}, 'approve')">Approve</button>
+                                <button class="btn btn-reject" onclick="decide({{ result_index }}, {{ loop.index0 }}, 'reject')">Reject</button>
                             {% endif %}
                         </div>
                     </li>
