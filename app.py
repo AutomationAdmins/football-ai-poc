@@ -44,13 +44,14 @@ class EventBatchPayload(BaseModel):
     input_2: EventInputPayload
 
 
-def _process_input(payload: EventInputPayload) -> dict:
+def _process_input(payload: EventInputPayload, original_input_index: int) -> dict:
 
     processed = process_event(payload.model_dump())
 
     if processed["status"] == "ignored":
         return {
             "status": "ignored",
+            "original_input_index": original_input_index,
             "event": processed,
             "reason": processed["reason"],
         }
@@ -64,6 +65,7 @@ def _process_input(payload: EventInputPayload) -> dict:
 
     return {
         "status": "processed",
+        "original_input_index": original_input_index,
         "event": processed,
         "stats": stats_context,
         "editorial_context": editorial_context,
@@ -90,8 +92,8 @@ def handle_event(payload: EventBatchPayload):
     global _last_result
 
     results = [
-        _process_input(payload.input_1),
-        _process_input(payload.input_2),
+        _process_input(payload.input_1, 0),
+        _process_input(payload.input_2, 1),
     ]
 
     valid_events = [
@@ -105,11 +107,17 @@ def handle_event(payload: EventBatchPayload):
 
     if not valid_events:
 
-        _last_result = {"results": results}
+        _last_result = {
+            "results": results,
+            "ranked_results": [],
+            "lead_story": None,
+        }
 
         return {
             "status": "processed",
             "results": results,
+            "ranked_results": [],
+            "lead_story": None,
         }
 
     #
@@ -129,7 +137,7 @@ def handle_event(payload: EventBatchPayload):
     print(ranking)
     print("===============================\n")
 
-    for item in ranking["ranking"]:
+    for rank_order, item in enumerate(ranking["ranking"], start=1):
 
         idx = item["event_index"]
 
@@ -137,11 +145,14 @@ def handle_event(payload: EventBatchPayload):
 
         valid_events[idx]["editorial_reason"] = item["reason"]
 
+        valid_events[idx]["rank_order"] = rank_order
+
     #
     # Highest first
     #
 
-    valid_events.sort(
+    ranked_results = sorted(
+        valid_events,
         key=lambda x: (
             {
                 "Critical": 4,
@@ -160,7 +171,7 @@ def handle_event(payload: EventBatchPayload):
     # Generate Insights
     #
 
-    for event in valid_events:
+    for event in ranked_results:
 
         prompt = build_insight_prompt(
             event["editorial_context"]
@@ -182,12 +193,16 @@ def handle_event(payload: EventBatchPayload):
         ]
 
     _last_result = {
-        "results": valid_events
+        "results": results,
+        "ranked_results": ranked_results,
+        "lead_story": ranked_results[0] if ranked_results else None,
     }
 
     return {
         "status": "processed",
-        "results": valid_events,
+        "results": results,
+        "ranked_results": ranked_results,
+        "lead_story": ranked_results[0] if ranked_results else None,
     }
 
 @app.post("/approve/{event_index}/{insight_index}")
