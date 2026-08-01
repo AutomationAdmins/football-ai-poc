@@ -9,8 +9,8 @@
 
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: #0d1117;
-            color: #e6edf3;
+            background: #f6f8fb;
+            color: #172033;
             min-height: 100vh;
             padding: 24px;
         }
@@ -20,7 +20,7 @@
             align-items: center;
             justify-content: space-between;
             margin-bottom: 28px;
-            border-bottom: 1px solid #21262d;
+            border-bottom: 1px solid #d7dfeb;
             padding-bottom: 16px;
         }
 
@@ -46,7 +46,7 @@
         header h1 {
             font-size: 1.4rem;
             font-weight: 600;
-            color: #58a6ff;
+            color: #0f4aa3;
         }
 
         header span.badge {
@@ -68,17 +68,18 @@
         @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
 
         .card {
-            background: #161b22;
-            border: 1px solid #21262d;
+            background: #ffffff;
+            border: 1px solid #d7dfeb;
             border-radius: 8px;
             padding: 20px;
+            box-shadow: 0 10px 30px rgba(15, 32, 51, 0.06);
         }
 
         .card h2 {
             font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            color: #8b949e;
+            color: #617086;
             margin-bottom: 14px;
             font-weight: 600;
         }
@@ -90,7 +91,7 @@
             font-size: 0.95rem;
         }
 
-        .event-grid .label { color: #8b949e; }
+        .event-grid .label { color: #617086; }
         .event-grid .value { font-weight: 600; }
 
         .badge-event {
@@ -109,7 +110,7 @@
         .badge-VAR_DECISION { background: #388bfd; color: #fff; }
         .badge-HALF_TIME  { background: #6e40c9; color: #fff; }
         .badge-FULL_TIME  { background: #6e40c9; color: #fff; }
-        .badge-ignored    { background: #30363d; color: #8b949e; }
+        .badge-ignored    { background: #dde5f0; color: #617086; }
 
         .stats-table {
             width: 100%;
@@ -131,19 +132,19 @@
             display: flex;
             align-items: flex-start;
             gap: 10px;
-            background: #0d1117;
-            border: 1px solid #21262d;
+            background: #f8fbff;
+            border: 1px solid #d7dfeb;
             border-radius: 6px;
             padding: 12px 14px;
         }
 
-        .insight-item.approved { border-color: #238636; background: #0f2d1a; }
-        .insight-item.rejected { border-color: #da3633; background: #2d1010; opacity: 0.6; }
+        .insight-item.approved { border-color: #238636; background: #eef9f0; }
+        .insight-item.rejected { border-color: #da3633; background: #fff1f0; opacity: 0.8; }
 
         .insight-rank {
             font-size: 1.1rem;
             font-weight: 700;
-            color: #58a6ff;
+            color: #0f4aa3;
             min-width: 24px;
             line-height: 1.4;
         }
@@ -182,7 +183,7 @@
         .decision-badge.rejected { background: #da3633; color: #fff; }
 
         .empty-state {
-            color: #8b949e;
+            color: #617086;
             font-size: 0.9rem;
             font-style: italic;
         }
@@ -212,8 +213,8 @@
         }
 
         .input-panel {
-            background: #0d1117;
-            border: 1px solid #21262d;
+            background: #f8fbff;
+            border: 1px solid #d7dfeb;
             border-radius: 8px;
             padding: 16px;
         }
@@ -221,25 +222,25 @@
         .input-panel h3 {
             font-size: 0.95rem;
             margin-bottom: 12px;
-            color: #58a6ff;
+            color: #0f4aa3;
         }
 
         .result-section-title {
             font-size: 0.95rem;
             margin-bottom: 12px;
-            color: #58a6ff;
+            color: #0f4aa3;
             font-weight: 600;
         }
 
         .form-group { display: flex; flex-direction: column; gap: 4px; }
-        .form-group label { font-size: 0.78rem; color: #8b949e; }
+        .form-group label { font-size: 0.78rem; color: #617086; }
 
         .form-group select,
         .form-group input {
-            background: #0d1117;
-            border: 1px solid #30363d;
+            background: #ffffff;
+            border: 1px solid #c6d3e4;
             border-radius: 5px;
-            color: #e6edf3;
+            color: #172033;
             padding: 6px 10px;
             font-size: 0.9rem;
         }
@@ -247,7 +248,8 @@
         .form-group select:focus,
         .form-group input:focus {
             outline: none;
-            border-color: #58a6ff;
+            border-color: #0f4aa3;
+            box-shadow: 0 0 0 3px rgba(15, 74, 163, 0.12);
         }
 
         .btn-send {
@@ -260,7 +262,7 @@
 
         #status-msg {
             font-size: 0.85rem;
-            color: #58a6ff;
+            color: #0f4aa3;
             margin-top: 10px;
             min-height: 1.2em;
         }
