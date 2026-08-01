@@ -65,6 +65,11 @@ def dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "result": _last_result})
 
 
+@app.get("/stats", response_class=HTMLResponse)
+def stats_dashboard(request: Request):
+    return templates.TemplateResponse("stats.html", {"request": request, "result": _last_result})
+
+
 @app.post("/event")
 def handle_event(payload: EventBatchPayload):
     global _last_result

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Football AI Stats View</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+            border-bottom: 1px solid #21262d;
+            padding-bottom: 16px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #58a6ff;
+        }
+
+        header span.badge {
+            background: #238636;
+            color: #fff;
+            font-size: 0.72rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #1f6feb;
+            color: #fff;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .card h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #8b949e;
+            margin-bottom: 14px;
+            font-weight: 600;
+        }
+
+        .result-section-title {
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            color: #58a6ff;
+            font-weight: 600;
+        }
+
+        .event-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 16px;
+            font-size: 0.95rem;
+            margin-bottom: 16px;
+        }
+
+        .event-grid .label { color: #8b949e; }
+        .event-grid .value { font-weight: 600; }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .stats-table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .stats-table td:first-child { color: #8b949e; }
+        .stats-table td:last-child { font-weight: 600; text-align: right; }
+
+        .empty-state {
+            color: #8b949e;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <h1>⚽ Football AI Combined Stats</h1>
+        <span class="badge">POC</span>
+    </div>
+    <a class="nav-link" href="/">Back To Dashboard</a>
+</header>
+
+{% if result and result.results %}
+<div class="grid">
+    {% for result_item in result.results %}
+    <div class="card">
+        <h2>Combined Stats</h2>
+        <div class="result-section-title">Input {{ loop.index }}</div>
+        {% if result_item and result_item.event %}
+            {% set ev = result_item.event %}
+            <div class="event-grid">
+                <span class="label">Event</span>
+                <span class="value">{{ ev.event_type }}</span>
+                <span class="label">League</span>
+                <span class="value">{{ ev.league }}</span>
+                <span class="label">Player</span>
+                <span class="value">{{ ev.player }}</span>
+                <span class="label">Team</span>
+                <span class="value">{{ ev.team }}</span>
+                <span class="label">Opponent</span>
+                <span class="value">{{ ev.opponent }}</span>
+                <span class="label">Minute</span>
+                <span class="value">{{ ev.minute }}'</span>
+                <span class="label">Score</span>
+                <span class="value">{{ ev.score }}</span>
+            </div>
+        {% endif %}
+
+        {% if result_item and result_item.stats %}
+            {% for entity, stats in result_item.stats.items() %}
+                {% for name, values in stats.items() %}
+                    <div style="margin-bottom:12px">
+                        <div style="font-weight:600; font-size:0.92rem; margin-bottom:6px; color:#58a6ff;">{{ name }}</div>
+                        <table class="stats-table">
+                            {% for k, v in values.items() %}
+                            <tr>
+                                <td>{{ k | replace("_", " ") | title }}</td>
+                                <td>
+                                    {% if v is mapping %}
+                                        {{ v | tojson }}
+                                    {% elif v is iterable and v is not string %}
+                                        {{ v | join(", ") }}
+                                    {% else %}
+                                        {{ v }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        {% else %}
+            <p class="empty-state">No combined stats available yet.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <h2>Combined Stats</h2>
+    <p class="empty-state">No processed events yet. Go back to the dashboard and submit both inputs first.</p>
+</div>
+{% endif %}
+
+</body>
+</html>
