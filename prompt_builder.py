@@ -26,11 +26,15 @@ def _flatten_stats(stats_context: dict) -> dict[str, str]:
 def build_prompt(event: dict, stats_context: dict) -> str:
     event_type = event.get("event_type", "UNKNOWN")
     league = event.get("league", "Unknown League")
-    fixture = event.get("fixture", "Unknown Fixture")
     player = event.get("player", "Unknown Player")
     team = event.get("team", "Unknown Team")
+    opponent = event.get("opponent", "Unknown Opponent")
     minute = event.get("minute", "?")
     score = event.get("score", "Unknown")
+
+    fixture = "Unknown Fixture"
+    if stats_context.get("fixture_stats"):
+        fixture = next(iter(stats_context["fixture_stats"].keys()))
 
     flat = _flatten_stats(stats_context)
 
@@ -48,6 +52,7 @@ Current Event:
 - Fixture: {fixture}
 - Player: {player}
 - Team: {team}
+- Opponent: {opponent}
 - Minute: {minute}'
 - Current Score: {score}
 {stats_block}
