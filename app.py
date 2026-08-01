@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from ai_engine import (
+    flatten_for_grounding,
     generate_insights,
     rank_events,
 )
@@ -177,19 +178,27 @@ def handle_event(payload: EventBatchPayload):
             event["editorial_context"]
         )
 
-        allowed = event["editorial_context"]["editorial_facts"]
+        allowed = flatten_for_grounding(
+            event["editorial_context"]
+        )
 
-        insights = generate_insights(
+        insight_result = generate_insights(
             prompt,
             allowed,
         )
 
+        event["lead_story_line"] = {
+            "text": insight_result["lead_story"],
+        }
+
         event["insights"] = [
             {
-                "text": x,
+                "category": x["category"],
+                "text": x["line"],
+                "facts_used": x.get("facts_used", []),
                 "decision": None,
             }
-            for x in insights
+            for x in insight_result["insights"]
         ]
 
     _last_result = {

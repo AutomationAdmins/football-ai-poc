@@ -122,27 +122,73 @@ Editorial Context
 
 def build_insight_prompt(editorial_context: dict):
     """
-    Prompt for generating editorial insights
-    after an event has been selected.
+    Prompt for generating commentator-ready lead story and stat pack.
     """
 
     cleaned = _clean_context(editorial_context)
 
     prompt = f"""
-You are an editorial football statistician.
+You are a broadcast football statistician preparing lines for live TV commentators.
 
-Generate editorial insights for this event.
+Generate a LEAD STORY plus 3 to 5 supporting insights for this event.
 
-build_insight_prompt
+Use the commentator_facts block as your primary source for key numbers and stakes.
+Use player, team, fixture, and league sections for supporting detail.
+
+Rules
+
+1. Lead story = one sentence, max 25 words. Name the scorer and team. State WHAT happened AND the main season stake (title, promotion, relegation, or qualification).
+2. Each insight line = one focused stat or fact. Max 20 words. One key number per line where possible.
+3. Do NOT repeat the editorial ranking reason or restate the lead story in insights.
+4. Prioritise insights in this order:
+   (a) season stakes
+   (b) live match moment
+   (c) player record
+   (d) team form
+   (e) opponent impact
+5. Use ONLY facts from Context. Never invent numbers or names.
+6. Write in present tense, broadcast-ready English — short, punchy, on-air readable.
+7. Every number in your output must appear in the supplied Context.
+8. Pull key numbers from commentator_facts, player, and team sections — do not write vague lines without stats.
+
+Categories for insights (use exactly one per insight):
+- season_stakes
+- match_context
+- player_stat
+- team_stat
+- opponent_impact
+- head_to_head
+- milestone
 
 Return ONLY JSON.
 
 Example
 
-[
-    "Saka has now scored 23 league goals this season.",
-    "This is his seventh goal against Chelsea."
-]
+{{
+    "lead_story": "Summerville equalises in the 87th minute — Leeds are one result away from the Premier League.",
+    "insights": [
+        {{
+            "category": "player_stat",
+            "line": "5 goals in 5 consecutive matches; 4 career goals against Sunderland.",
+            "facts_used": ["consecutive_scoring_matches", "goals_vs_sunderland_career"]
+        }},
+        {{
+            "category": "team_stat",
+            "line": "Leeds on 87 points with a 5-game win streak and 21 home games unbeaten.",
+            "facts_used": ["points", "winning_streak", "home_unbeaten"]
+        }},
+        {{
+            "category": "season_stakes",
+            "line": "A draw confirms automatic promotion after 3 seasons outside the top flight.",
+            "facts_used": ["promotion_stakes", "years_out_of_premier_league"]
+        }},
+        {{
+            "category": "opponent_impact",
+            "line": "Sunderland need a win to strengthen their playoff seeding.",
+            "facts_used": ["opponent_line"]
+        }}
+    ]
+}}
 
 Context
 
