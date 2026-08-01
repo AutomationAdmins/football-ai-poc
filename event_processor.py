@@ -10,8 +10,10 @@ def process_event(event: dict) -> dict:
     return {
         "status": "interesting",
         "event_type": event_type,
+        "league": event.get("league"),
         "player": event.get("player"),
         "team": event.get("team"),
-        "minute": event.get("minute"),
+        "opponent": event.get("opponent"),
+        "minute": event.get("minutes"),
         "score": event.get("score"),
     }
