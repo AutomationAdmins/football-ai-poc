@@ -51,4 +51,4 @@ gcloud run deploy football-ai-poc \
 GOAL, PENALTY, RED_CARD, OWN_GOAL, VAR_DECISION, HALF_TIME, FULL_TIME
 
 All other event types are ignored and do not call the AI.
-End
+#END
