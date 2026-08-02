@@ -134,6 +134,45 @@ def build_insight_prompt(editorial_context: dict):
 
     cleaned = _clean_context(editorial_context)
 
+    # Surface key signals to guide the LLM
+    player = cleaned.get("player", {})
+    commentator = cleaned.get("commentator_facts", {})
+
+    has_milestone = bool(
+        player.get("next_milestone")
+        or player.get("notes")
+        or player.get("goals_to_next_milestone") is not None
+    )
+    has_head_to_head = bool(commentator.get("head_to_head"))
+    has_streak = bool(
+        player.get("consecutive_scoring_matches")
+        or player.get("consecutive_goal_involvements")
+    )
+
+    # Build conditional instruction blocks
+    milestone_rule = ""
+    if has_milestone:
+        milestone_rule = (
+            "\nMILESTONE RULE (MANDATORY): The player.notes or player.next_milestone field contains a historic milestone. "
+            "You MUST generate a 'milestone' insight. State the player's name, their current tally, the target, and why it is significant. "
+            "Example: \"Haaland on 99 Premier League goals — 1 away from 100, the fastest player in history to reach the landmark.\""
+        )
+
+    h2h_rule = ""
+    if has_head_to_head:
+        h2h_rule = (
+            "\nHEAD-TO-HEAD RULE (MANDATORY): commentator_facts.head_to_head contains fixture head-to-head goal data. "
+            "You MUST generate a 'head_to_head' insight using those exact numbers. "
+            "Example: \"Arsenal 9, Chelsea 8 — head-to-head goals in this fixture.\""
+        )
+
+    streak_rule = ""
+    if has_streak:
+        streak_rule = (
+            "\nSTREAK RULE: The player has a consecutive scoring or involvement streak. "
+            "You MUST include this streak stat in BOTH the match_context line AND the player_stat line."
+        )
+
     prompt = f"""
 You are a broadcast football statistician preparing lines for live TV commentators.
 
@@ -144,29 +183,46 @@ Use player, team, fixture, and league sections for supporting detail.
 
 Rules
 
-1. Lead story = one sentence, max 25 words. Name the scorer and team. State WHAT happened AND the main season stake (title, promotion, relegation, or qualification).
+1. LEAD STORY — This is the commentator's opening line on live television. It must be punchy, data-rich, and worth reading aloud.
+   MANDATORY FORMAT: "[Full Player Name] scores [goal type] for [Team] against [Opponent] — [Score] at [Minute]'. [One key consequence OR one standout stat]."
+   - Goal type must be specific: "the equaliser", "the go-ahead goal", "a penalty", "his Nth goal of the season", "his 100th Premier League goal"
+   - Always include the score AND minute — never omit either
+   - The consequence MUST state the exact season impact (e.g. "Leeds head for automatic promotion", "Arsenal move to within one win of the title", "Chelsea retain their Champions League place")
+   - If a milestone exists, weave it into the lead instead of the consequence
+   - Max 40 words. No vague phrases like "big moment" or "crucial goal" — use facts
+   - Examples of GOOD leads:
+     * "Summerville scores the equaliser for Leeds against Sunderland — 1-1 at 87'. His 24th Championship goal — Leeds head for automatic promotion after 3 years away."
+     * "Haaland scores his 100th Premier League goal for Manchester City against Liverpool — 3-1 at 87'. The fastest player in history to reach the landmark."
+     * "Palmer scores the 90th-minute equaliser for Chelsea against Arsenal — 1-1. Chelsea hold onto their Champions League place — Newcastle United stay 5th."
+   - Examples of BAD leads (DO NOT write these):
+     * "Summerville scores for Leeds — promotion." ❌ (no score, no minute, no data)
+     * "Haaland goal — City win title." ❌ (vague, no numbers)
+     * "Big moment for Arsenal as Saka scores." ❌ (no score, no minute, no consequence)
 2. Each insight line = one focused stat or fact. Max 20 words. One key number per line where possible.
 3. Do NOT repeat the editorial ranking reason or restate the lead story in insights.
 4. Prioritise insights in this order:
-   (a) season stakes
-   (b) live match moment
-   (c) player record
-   (d) team form
-   (e) opponent impact
+   (a) milestone (if present — MANDATORY)
+   (b) season stakes
+   (c) live match moment (match_context)
+   (d) player record
+   (e) team form
+   (f) head_to_head (if present — MANDATORY)
+   (g) opponent impact
 5. Use ONLY facts from Context. Never invent numbers or names.
 6. Write in present tense, broadcast-ready English — short, punchy, on-air readable.
 7. Every number in your output must appear in the supplied Context.
 8. Pull key numbers from commentator_facts, player, and team sections — do not write vague lines without stats.
+{milestone_rule}{h2h_rule}{streak_rule}
 
 Data Specificity Rules — CRITICAL:
 
-- match_context insight MUST follow this exact format: "[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]'." Then append one additional stat. Always use commentator_facts.score and commentator_facts.minute.
-- player_stat insight MUST name the player and include at least one specific number. Never say "23 goals this season" — always say "[Name] has 23 goals this season."
-- team_stat insight MUST name the team and include at least two numbers (e.g. points, position, streak, goal difference, home record).
-- season_stakes insight MUST name the team and state the exact consequence clearly.
-- opponent_impact insight MUST name the opponent with at least one number or specific consequence.
-- milestone insight MUST state the player name, current tally, and the exact target.
-- Every insight that references a live moment MUST include the score and minute in the format "— [Score] at [Minute]'".
+- match_context MUST follow: "[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]'." Then append the player's consecutive streak if available, or their season goal tally.
+- player_stat MUST name the player and include: goals, assists (if available), and the consecutive streak (if available). Example: "Saka has 23 goals and 14 assists this season — 7 consecutive goal involvements."
+- team_stat MUST name the team and include at least two numbers (points, position, streak, goal difference, or home record).
+- season_stakes MUST name the team and state the exact consequence clearly.
+- opponent_impact MUST name the opponent with at least one number (points, position, or consequence).
+- milestone MUST state: player name, current tally, exact target, and why it is significant.
+- head_to_head MUST use the exact numbers from commentator_facts.head_to_head.
 
 Categories for insights (use exactly one per insight):
 - season_stakes
@@ -179,30 +235,38 @@ Categories for insights (use exactly one per insight):
 
 Return ONLY JSON. Do NOT include a facts_used field.
 
-Example
+Example (with milestone, streak, and head-to-head all present)
 
 {{
-    "lead_story": "Summerville equalises in the 87th minute — Leeds are one result away from the Premier League.",
+    "lead_story": "Haaland scores his 100th Premier League goal for Man City against Liverpool — 3-1 at 87'. The fastest player in history to reach the landmark — City close in on the title.",
     "insights": [
         {{
-            "category": "match_context",
-            "line": "Summerville scores the equaliser for Leeds against Sunderland — 1-1 at 87', his 5th goal in as many games."
-        }},
-        {{
-            "category": "player_stat",
-            "line": "Summerville has 23 Championship goals this season and 4 career goals against Sunderland."
-        }},
-        {{
-            "category": "team_stat",
-            "line": "Leeds on 87 points, 1st in the Championship, unbeaten in 21 home games."
+            "category": "milestone",
+            "line": "Haaland reaches 100 Premier League goals — the fastest player in history to the landmark, in just 35 appearances."
         }},
         {{
             "category": "season_stakes",
-            "line": "Leeds are promoted automatically with a win or draw today — 3 seasons outside the Premier League."
+            "line": "Manchester City win the title outright today regardless of Arsenal's result."
+        }},
+        {{
+            "category": "match_context",
+            "line": "Haaland scores for Man City against Liverpool — 3-1 at 87', his 6th consecutive scoring match."
+        }},
+        {{
+            "category": "player_stat",
+            "line": "Haaland has 35 goals and 5 assists this season — 6 consecutive scoring matches and 10 career goals vs Liverpool."
+        }},
+        {{
+            "category": "team_stat",
+            "line": "Man City on 75 points, 1st in the Premier League, +44 goal difference."
+        }},
+        {{
+            "category": "head_to_head",
+            "line": "Man City 11, Liverpool 8 — head-to-head goals in this fixture."
         }},
         {{
             "category": "opponent_impact",
-            "line": "Sunderland must win to secure a higher playoff seeding — currently 3rd with 79 points."
+            "line": "Liverpool have Champions League secured — but a win here gifts Arsenal the title."
         }}
     ]
 }}
@@ -213,4 +277,3 @@ Context
 """
 
     return prompt
-

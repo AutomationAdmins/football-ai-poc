@@ -479,7 +479,26 @@
 
 <div class="grid">
 
+{% if result and result.rate_limit_error %}
+<div style="background: rgba(227,179,65,0.15); border: 1px solid rgba(227,179,65,0.5); border-radius: 10px; padding: 18px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 14px;">
+    <span style="font-size: 1.5rem;">⏱️</span>
+    <div>
+        <strong style="color: #e3b341; font-size: 1rem;">Groq Rate Limit Reached</strong>
+        <p style="margin: 4px 0 0; color: #8b949e; font-size: 0.88rem;">
+            Daily token quota exhausted (100k tokens/day on free tier).
+            {% if result.rate_limit_error.retry_after != "unknown" %}
+            Retry in <strong style="color:#e3b341;">{{ result.rate_limit_error.retry_after }}</strong>.
+            {% else %}
+            Please wait a few minutes and try again.
+            {% endif %}
+            Quota resets at <strong style="color:#e3b341;">midnight UTC</strong>.
+        </p>
+    </div>
+</div>
+{% endif %}
+
     {% if result and result.lead_story %}
+
     {% set lead = result.lead_story %}
     <div class="card lead-story">
         <h2>Recommended Lead Story</h2>

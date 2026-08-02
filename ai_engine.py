@@ -3,10 +3,17 @@ import os
 import re
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+class GroqRateLimitError(Exception):
+    """Raised when the Groq daily token quota is exhausted."""
+    def __init__(self, retry_after: str = "unknown"):
+        self.retry_after = retry_after
+        super().__init__(f"Groq rate limit reached. Retry in: {retry_after}")
 
 
 _client = None
@@ -102,20 +109,32 @@ def _chat(prompt: str, max_tokens=800):
 
     client = _get_client()
 
-    response = client.chat.completions.create(
-        #model="llama-3.3-70b-versatile",
-        model="llama-3.1-8b-instant",
-        temperature=0,
-        max_tokens=max_tokens,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            #model="llama-3.1-8b-instant",
+            temperature=0,
+            max_tokens=max_tokens,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+        return response.choices[0].message.content
 
-    return response.choices[0].message.content
+    except RateLimitError as e:
+        # Parse retry time from Groq error message if present
+        retry_after = "unknown"
+        try:
+            msg = str(e)
+            match = re.search(r"Please try again in ([\d]+m[\d.]+s|[\d.]+s)", msg)
+            if match:
+                retry_after = match.group(1)
+        except Exception:
+            pass
+        raise GroqRateLimitError(retry_after=retry_after) from e
 
 
 # ---------------------------------------------------------
