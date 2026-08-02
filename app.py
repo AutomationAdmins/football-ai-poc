@@ -24,7 +24,7 @@ from prompt_builder import (
 
 app = FastAPI(title="Football AI Editorial Assistant")
 
-#app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # In-memory store of the most recent processed events for the dashboard

@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Soccer Saturday - Live Event</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- Sky Sports Header -->
+<header class="sky-header">
+    <div class="header-container">
+        <div class="logo-section">
+            <span class="logo-sky">sky</span>
+            <span class="logo-sports">sports</span>
+        </div>
+        <h1 class="event-title">SOCCER SATURDAY - LIVE EVENT</h1>
+        <div class="header-right">
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                LIVE
+            </div>
+            <div class="date-display">
+                📅 28 Apr 2026
+            </div>
+            <a href="/stats" class="stats-link">Stats</a>
+        </div>
+    </div>
+</header>
+
+<!-- Main Container -->
+<div class="main-container">
+
+<style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f6f8fb;
+            color: #172033;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+            border-bottom: 1px solid #d7dfeb;
+            padding-bottom: 16px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #1f6feb;
+            color: #fff;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #0f4aa3;
+        }
+
+        header span.badge {
+            background: #238636;
+            color: #fff;
+            font-size: 0.72rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: #ffffff;
+            border: 1px solid #d7dfeb;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(15, 32, 51, 0.06);
+        }
+
+        .card h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #617086;
+            margin-bottom: 14px;
+            font-weight: 600;
+        }
+
+        .event-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 16px;
+            font-size: 0.95rem;
+        }
+
+        .lead-story {
+            grid-column: 1 / -1;
+            border: 1px solid #bfd2ef;
+            background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+        }
+
+        .lead-story-headline {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #0f4aa3;
+            margin-bottom: 8px;
+        }
+
+        .lead-story-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .lead-story-copy {
+            color: #334155;
+            line-height: 1.5;
+        }
+
+        .event-grid .label { color: #617086; }
+        .event-grid .value { font-weight: 600; }
+
+        .badge-event {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .badge-GOAL       { background: #238636; color: #fff; }
+        .badge-PENALTY    { background: #e3b341; color: #000; }
+        .badge-RED_CARD   { background: #da3633; color: #fff; }
+        .badge-OWN_GOAL   { background: #da3633; color: #fff; }
+        .badge-VAR_DECISION { background: #388bfd; color: #fff; }
+        .badge-HALF_TIME  { background: #6e40c9; color: #fff; }
+        .badge-FULL_TIME  { background: #6e40c9; color: #fff; }
+        .badge-ignored    { background: #dde5f0; color: #617086; }
+
+
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .stats-table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .stats-table td:first-child { color: #8b949e; }
+        .stats-table td:last-child { font-weight: 600; text-align: right; }
+
+        .insights-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+        .lead-story-line {
+            background: linear-gradient(135deg, #0f4aa3 0%, #1a6fd4 100%);
+            color: #fff;
+            border-radius: 8px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+        }
+
+        .lead-story-line-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.85;
+            margin-bottom: 6px;
+        }
+
+        .lead-story-line-text {
+            font-size: 1.05rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .category-badge {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #e8eef8;
+            color: #0f4aa3;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .category-season_stakes { background: #fff3cd; color: #856404; }
+        .category-match_context { background: #d1ecf1; color: #0c5460; }
+        .category-player_stat { background: #d4edda; color: #155724; }
+        .category-team_stat { background: #cce5ff; color: #004085; }
+        .category-opponent_impact { background: #f8d7da; color: #721c24; }
+        .category-head_to_head { background: #e2d5f5; color: #4a235a; }
+        .category-milestone { background: #fdebd0; color: #7d6608; }
+
+        .insight-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .insight-facts {
+            font-size: 0.75rem;
+            color: #617086;
+            font-style: italic;
+        }
+
+        .insight-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: #f8fbff;
+            border: 1px solid #d7dfeb;
+            border-radius: 6px;
+            padding: 12px 14px;
+        }
+
+        .insight-item.approved { border-color: #238636; background: #eef9f0; }
+        .insight-item.rejected { border-color: #da3633; background: #fff1f0; opacity: 0.8; }
+
+        .insight-rank {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #0f4aa3;
+            min-width: 24px;
+            line-height: 1.4;
+        }
+
+        .insight-text {
+            flex: 1;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .insight-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        .btn {
+            border: none;
+            border-radius: 5px;
+            padding: 5px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .btn:hover { opacity: 0.8; }
+        .btn-approve { background: #238636; color: #fff; }
+        .btn-reject  { background: #da3633; color: #fff; }
+
+        .decision-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 10px;
+            letter-spacing: 0.05em;
+        }
+
+        .decision-badge.approved { background: #238636; color: #fff; }
+        .decision-badge.rejected { background: #da3633; color: #fff; }
+
+        .empty-state {
+            color: #617086;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
+        /* Send event form */
+        .send-form {
+            grid-column: 1 / -1;
+        }
+
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        @media (max-width: 1000px) {
+            .input-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .input-panel {
+            background: #f8fbff;
+            border: 1px solid #d7dfeb;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .input-panel h3 {
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            color: #0f4aa3;
+        }
+
+        .result-section-title {
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            color: #0f4aa3;
+            font-weight: 600;
+        }
+
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 0.78rem; color: #617086; }
+
+        .form-group select,
+        .form-group input {
+            background: #ffffff;
+            border: 1px solid #c6d3e4;
+            border-radius: 5px;
+            color: #172033;
+            padding: 6px 10px;
+            font-size: 0.9rem;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #0f4aa3;
+            box-shadow: 0 0 0 3px rgba(15, 74, 163, 0.12);
+        }
+
+        .btn-send {
+            background: #1f6feb;
+            color: #fff;
+            padding: 7px 20px;
+            font-size: 0.9rem;
+            align-self: flex-end;
+        }
+
+        #status-msg {
+            font-size: 0.85rem;
+            color: #0f4aa3;
+            margin-top: 10px;
+            min-height: 1.2em;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <h1>⚽ Football AI Editorial Assistant</h1>
+        <span class="badge">POC</span>
+    </div>
+    <a class="nav-link" href="/stats">Stats</a>
+</header>
+
+<!-- Send Event Form -->
+<div class="card send-form" style="margin-bottom: 20px;">
+    <h2>Send Live Events</h2>
+    <div class="input-grid">
+        <div class="input-panel">
+            <h3>Input 1</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Event</label>
+                    <select id="input-1-event">
+                        <option value="GOAL">GOAL</option>
+                        <option value="PENALTY">PENALTY</option>
+                        <option value="RED_CARD">RED_CARD</option>
+                        <option value="OWN_GOAL">OWN_GOAL</option>
+                        <option value="VAR_DECISION">VAR_DECISION</option>
+                        <option value="HALF_TIME">HALF_TIME</option>
+                        <option value="FULL_TIME">FULL_TIME</option>
+                        <option value="PASS">PASS (ignored)</option>
+                        <option value="THROW_IN">THROW_IN (ignored)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>League</label>
+                    <select id="input-1-league" onchange="applyLeaguePreset(1)">
+                        <option value="Premier League">Premier League</option>
+                        <option value="EFL Championship">EFL Championship</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Player</label>
+                    <input id="input-1-player" type="text" placeholder="Player name" />
+                </div>
+                <div class="form-group">
+                    <label>Team</label>
+                    <input id="input-1-team" type="text" placeholder="Team name" />
+                </div>
+                <div class="form-group">
+                    <label>Opponent</label>
+                    <input id="input-1-opponent" type="text" placeholder="Opponent name" />
+                </div>
+                <div class="form-group">
+                    <label>Minutes</label>
+                    <input id="input-1-minutes" type="number" value="87" min="1" max="120" style="width:80px" />
+                </div>
+                <div class="form-group">
+                    <label>Score</label>
+                    <input id="input-1-score" type="text" placeholder="e.g. 2-1" style="width:80px" />
+                </div>
+            </div>
+        </div>
+        <div class="input-panel">
+            <h3>Input 2</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Event</label>
+                    <select id="input-2-event">
+                        <option value="GOAL">GOAL</option>
+                        <option value="PENALTY">PENALTY</option>
+                        <option value="RED_CARD">RED_CARD</option>
+                        <option value="OWN_GOAL">OWN_GOAL</option>
+                        <option value="VAR_DECISION">VAR_DECISION</option>
+                        <option value="HALF_TIME">HALF_TIME</option>
+                        <option value="FULL_TIME">FULL_TIME</option>
+                        <option value="PASS">PASS (ignored)</option>
+                        <option value="THROW_IN">THROW_IN (ignored)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>League</label>
+                    <select id="input-2-league" onchange="applyLeaguePreset(2)">
+                        <option value="Premier League">Premier League</option>
+                        <option value="EFL Championship">EFL Championship</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Player</label>
+                    <input id="input-2-player" type="text" placeholder="Player name" />
+                </div>
+                <div class="form-group">
+                    <label>Team</label>
+                    <input id="input-2-team" type="text" placeholder="Team name" />
+                </div>
+                <div class="form-group">
+                    <label>Opponent</label>
+                    <input id="input-2-opponent" type="text" placeholder="Opponent name" />
+                </div>
+                <div class="form-group">
+                    <label>Minutes</label>
+                    <input id="input-2-minutes" type="number" value="87" min="1" max="120" style="width:80px" />
+                </div>
+                <div class="form-group">
+                    <label>Score</label>
+                    <input id="input-2-score" type="text" placeholder="e.g. 2-1" style="width:80px" />
+                </div>
+            </div>
+        </div>
+    </div>
+    <div style="margin-top: 14px;">
+        <button class="btn btn-send" onclick="sendEvent()">Send Both Events</button>
+    </div>
+    <div id="status-msg"></div>
+</div>
+
+<div class="grid">
+
+{% if result and result.rate_limit_error %}
+<div style="background: rgba(227,179,65,0.15); border: 1px solid rgba(227,179,65,0.5); border-radius: 10px; padding: 18px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 14px;">
+    <span style="font-size: 1.5rem;">⏱️</span>
+    <div>
+        <strong style="color: #e3b341; font-size: 1rem;">Groq Rate Limit Reached</strong>
+        <p style="margin: 4px 0 0; color: #8b949e; font-size: 0.88rem;">
+            Daily token quota exhausted (100k tokens/day on free tier).
+            {% if result.rate_limit_error.retry_after != "unknown" %}
+            Retry in <strong style="color:#e3b341;">{{ result.rate_limit_error.retry_after }}</strong>.
+            {% else %}
+            Please wait a few minutes and try again.
+            {% endif %}
+            Quota resets at <strong style="color:#e3b341;">midnight UTC</strong>.
+        </p>
+    </div>
+</div>
+{% endif %}
+
+    {% if result and result.lead_story %}
+
+    {% set lead = result.lead_story %}
+    <div class="card lead-story">
+        <h2>Recommended Lead Story</h2>
+        <div class="lead-story-headline">Input {{ lead.original_input_index + 1 }} should lead the show</div>
+        <div class="lead-story-meta">
+            <span class="badge-event badge-GOAL" style="background:#1f6feb">{{ lead.priority | default('Ranked') }}</span>
+            <span><strong>{{ lead.event.team }}</strong> vs {{ lead.event.opponent }}</span>
+            <span>{{ lead.event.minute }}'</span>
+            <span>{{ lead.event.score }}</span>
+        </div>
+        <p class="lead-story-copy">{{ lead.editorial_reason }}</p>
+        {% if lead.lead_story_line %}
+        <div class="lead-story-line" style="margin-top: 14px;">
+            <div class="lead-story-line-label">Commentator Lead Line</div>
+            <div class="lead-story-line-text">{{ lead.lead_story_line.text }}</div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if result and result.results %}
+        {% for result_item in result.results %}
+    <div class="card">
+        <h2>Live Event</h2>
+        <div class="result-section-title">Input {{ result_item.original_input_index + 1 }}</div>
+        {% if result_item and result_item.event %}
+            {% set ev = result_item.event %}
+            <div class="event-grid">
+                <span class="label">Type</span>
+                <span class="value">
+                    <span class="badge-event badge-{{ ev.event_type | default('ignored') }}">
+                        {{ ev.event_type | default(ev.event | upper) }}
+                    </span>
+                </span>
+                {% if ev.player %}
+                <span class="label">Player</span>
+                <span class="value">{{ ev.player }}</span>
+                {% endif %}
+                {% if ev.league %}
+                <span class="label">League</span>
+                <span class="value">{{ ev.league }}</span>
+                {% endif %}
+                {% if ev.team %}
+                <span class="label">Team</span>
+                <span class="value">{{ ev.team }}</span>
+                {% endif %}
+                {% if ev.opponent %}
+                <span class="label">Opponent</span>
+                <span class="value">{{ ev.opponent }}</span>
+                {% endif %}
+                {% if ev.minute %}
+                <span class="label">Minute</span>
+                <span class="value">{{ ev.minute }}'</span>
+                {% endif %}
+                {% if ev.score %}
+                <span class="label">Score</span>
+                <span class="value">{{ ev.score }}</span>
+                {% endif %}
+                <span class="label">Status</span>
+                <span class="value">
+                    {% if result_item.status == "ignored" %}
+                        <span class="badge-event badge-ignored">IGNORED</span>
+                    {% elif result_item.status == "error" %}
+                        <span class="badge-event badge-OWN_GOAL">ERROR</span>
+                    {% else %}
+                        <span class="badge-event badge-GOAL" style="background:#1f6feb">PROCESSED</span>
+                    {% endif %}
+                </span>
+                {% if result_item.rank_order %}
+                <span class="label">Rank</span>
+                <span class="value">#{{ result_item.rank_order }} · {{ result_item.priority }}</span>
+                {% endif %}
+            </div>
+            {% if result_item.reason %}
+            <p class="empty-state" style="margin-top:12px;">{{ result_item.reason }}</p>
+            {% endif %}
+        {% else %}
+            <p class="empty-state">No event received yet. Send an event using the form above.</p>
+        {% endif %}
+    </div>
+        {% endfor %}
+    {% else %}
+    <div class="card" style="grid-column: 1 / -1;">
+        <h2>Live Events</h2>
+        <p class="empty-state">No events received yet. Send both inputs above.</p>
+    </div>
+    {% endif %}
+
+    <div class="card" style="grid-column: 1 / -1;">
+        <h2>AI-Generated Insights &mdash; Statistician Review</h2>
+        {% if result and result.results %}
+            {% for result_item in result.results %}
+            {% set result_index = loop.index0 %}
+            <div style="margin-bottom: 18px;">
+                <div class="result-section-title">Input {{ result_item.original_input_index + 1 }}{% if result_item.rank_order %} · Ranked #{{ result_item.rank_order }}{% endif %}</div>
+                {% if result_item.lead_story_line %}
+                <div class="lead-story-line">
+                    <div class="lead-story-line-label">Lead Story — On Air</div>
+                    <div class="lead-story-line-text">{{ result_item.lead_story_line.text }}</div>
+                </div>
+                {% endif %}
+                {% if result_item.insights %}
+                <ul class="insights-list" id="insights-list-{{ result_index }}">
+                    {% for item in result_item.insights %}
+                    <li class="insight-item {% if item.decision %}{{ item.decision }}{% endif %}" id="insight-{{ result_index }}-{{ loop.index0 }}">
+                        <span class="insight-rank">#{{ loop.index }}</span>
+                        {% if item.category %}
+                        <span class="category-badge category-{{ item.category }}">{{ item.category | replace('_', ' ') }}</span>
+                        {% endif %}
+                        <div class="insight-meta">
+                            <span class="insight-text">{{ item.text }}</span>
+                        </div>
+                        <div class="insight-actions">
+                            {% if item.decision %}
+                                <span class="decision-badge {{ item.decision }}">{{ item.decision | upper }}</span>
+                            {% else %}
+                                <button class="btn btn-approve" onclick="decide({{ result_index }}, {{ loop.index0 }}, 'approve')">Approve</button>
+                                <button class="btn btn-reject" onclick="decide({{ result_index }}, {{ loop.index0 }}, 'reject')">Reject</button>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% elif result_item.status == "ignored" %}
+                <p class="empty-state">Input {{ result_item.original_input_index + 1 }} was ignored — no AI insights generated.</p>
+                {% elif result_item.status == "error" %}
+                <p class="empty-state">Input {{ result_item.original_input_index + 1 }} failed: {{ result_item.reason }}</p>
+                {% else %}
+                <p class="empty-state">No insights for Input {{ result_item.original_input_index + 1 }}.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="empty-state">No insights yet. Send both inputs to generate AI insights.</p>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+    const leaguePresets = {
+        'Premier League': {
+            team: 'Arsenal',
+            opponent: 'Chelsea',
+            player: 'Bukayo Saka',
+            score: '2-1',
+        },
+        'EFL Championship': {
+            team: 'Leeds United',
+            opponent: 'Sunderland',
+            player: 'Crysencio Summerville',
+            score: '1-1',
+        },
+    };
+
+    function applyLeaguePreset(inputIndex) {
+        const league = document.getElementById(`input-${inputIndex}-league`).value;
+        const preset = leaguePresets[league];
+
+        if (!preset) {
+            return;
+        }
+
+        document.getElementById(`input-${inputIndex}-team`).value = preset.team;
+        document.getElementById(`input-${inputIndex}-opponent`).value = preset.opponent;
+        document.getElementById(`input-${inputIndex}-player`).value = preset.player;
+        document.getElementById(`input-${inputIndex}-score`).value = preset.score;
+    }
+
+    function buildInputPayload(inputIndex) {
+        return {
+            event: document.getElementById(`input-${inputIndex}-event`).value,
+            league: document.getElementById(`input-${inputIndex}-league`).value || null,
+            player: document.getElementById(`input-${inputIndex}-player`).value || null,
+            team: document.getElementById(`input-${inputIndex}-team`).value || null,
+            opponent: document.getElementById(`input-${inputIndex}-opponent`).value || null,
+            minutes: parseInt(document.getElementById(`input-${inputIndex}-minutes`).value) || null,
+            score: document.getElementById(`input-${inputIndex}-score`).value || null,
+        };
+    }
+
+    async function sendEvent() {
+        const payload = {
+            input_1: buildInputPayload(1),
+            input_2: buildInputPayload(2),
+        };
+
+        const msg = document.getElementById('status-msg');
+        msg.style.color = '#58a6ff';
+        msg.textContent = 'Sending both events...';
+
+        try {
+            const res = await fetch('/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+
+            if (data.status === 'error') {
+                msg.textContent = `AI error: ${data.reason}`;
+                msg.style.color = '#da3633';
+            } else {
+                msg.textContent = 'Both inputs processed — refreshing dashboard...';
+                setTimeout(() => location.reload(), 600);
+            }
+        } catch (e) {
+            msg.style.color = '#da3633';
+            msg.textContent = `Error: ${e.message}`;
+        }
+    }
+
+    async function decide(eventIndex, insightIndex, action) {
+        const endpoint = action === 'approve'
+            ? `/approve/${eventIndex}/${insightIndex}`
+            : `/reject/${eventIndex}/${insightIndex}`;
+        await fetch(endpoint, { method: 'POST' });
+
+        const item = document.getElementById(`insight-${eventIndex}-${insightIndex}`);
+        item.classList.add(action === 'approve' ? 'approved' : 'rejected');
+
+        const actionsDiv = item.querySelector('.insight-actions');
+        const badge = document.createElement('span');
+        badge.className = `decision-badge ${action === 'approve' ? 'approved' : 'rejected'}`;
+        badge.textContent = action === 'approve' ? 'APPROVED' : 'REJECTED';
+        actionsDiv.innerHTML = '';
+        actionsDiv.appendChild(badge);
+    }
+
+    applyLeaguePreset(1);
+    document.getElementById('input-2-league').value = 'EFL Championship';
+    applyLeaguePreset(2);
+</script>
+
+</body>
+</html>
