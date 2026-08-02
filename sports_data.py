@@ -24,19 +24,29 @@ def _load_stats() -> dict:
 
 
 def _matches_league(entity: dict, league: str | None) -> bool:
-    return not league or entity.get("league") == league
+    if not league:
+        return True
+    entity_league = entity.get("league")
+    return entity_league and entity_league.lower() == league.lower()
 
 
 def _find_fixture(stats: dict, league: str | None, team: str | None, opponent: str | None) -> str | None:
     if not team or not opponent:
         return None
 
+    league_lower = league.lower() if league else None
+    team_lower = team.lower()
+    opponent_lower = opponent.lower()
+
     for fixture_name, fixture in stats.get("fixtures", {}).items():
-        if league and fixture.get("competition") != league:
+        if league_lower and fixture.get("competition", "").lower() != league_lower:
             continue
 
-        teams = {fixture.get("home_team"), fixture.get("away_team")}
-        if {team, opponent} == teams:
+        home_team = fixture.get("home_team", "").lower()
+        away_team = fixture.get("away_team", "").lower()
+        teams = {home_team, away_team}
+        
+        if {team_lower, opponent_lower} == teams:
             return fixture_name
 
     return None
@@ -61,26 +71,40 @@ def _apply_increments(context: dict, event_type: str) -> dict:
     return updated
 
 
+def _find_case_insensitive_key(data: dict, key: str | None) -> str | None:
+    if not key or not data:
+        return None
+    key_lower = key.lower()
+    for k in data.keys():
+        if k.lower() == key_lower:
+            return k
+    return None
+
+
 def get_context(event: dict) -> dict:
     stats = _load_stats()
     context = {}
 
     league = event.get("league")
+    league_key = _find_case_insensitive_key(stats.get("leagues", {}), league)
+    
     fixture = _find_fixture(stats, league, event.get("team"), event.get("opponent"))
 
-    if league and league in stats.get("leagues", {}):
-        context["league_stats"] = {league: stats["leagues"][league]}
+    if league_key:
+        context["league_stats"] = {league_key: stats["leagues"][league_key]}
 
     if fixture and fixture in stats.get("fixtures", {}):
         context["fixture_stats"] = {fixture: stats["fixtures"][fixture]}
 
     player = event.get("player")
-    if player and player in stats.get("players", {}) and _matches_league(stats["players"][player], league):
-        context["player_stats"] = {player: stats["players"][player]}
+    player_key = _find_case_insensitive_key(stats.get("players", {}), player)
+    if player_key and _matches_league(stats["players"][player_key], league):
+        context["player_stats"] = {player_key: stats["players"][player_key]}
 
     team = event.get("team")
-    if team and team in stats.get("teams", {}) and _matches_league(stats["teams"][team], league):
-        context["team_stats"] = {team: stats["teams"][team]}
+    team_key = _find_case_insensitive_key(stats.get("teams", {}), team)
+    if team_key and _matches_league(stats["teams"][team_key], league):
+        context["team_stats"] = {team_key: stats["teams"][team_key]}
 
     if fixture:
         context["fixture_lookup"] = {"selected_fixture": {"name": fixture}}

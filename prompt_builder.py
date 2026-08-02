@@ -202,7 +202,7 @@ Rules
 3. Do NOT repeat the editorial ranking reason or restate the lead story in insights.
 4. Prioritise insights in this order:
    (a) milestone (if present — MANDATORY)
-   (b) season stakes
+   (b) league_impact
    (c) live match moment (match_context)
    (d) player record
    (e) team form
@@ -219,13 +219,13 @@ Data Specificity Rules — CRITICAL:
 - match_context MUST follow: "[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]'." Then append the player's consecutive streak if available, or their season goal tally.
 - player_stat MUST name the player and include: goals, assists (if available), and the consecutive streak (if available). Example: "Saka has 23 goals and 14 assists this season — 7 consecutive goal involvements."
 - team_stat MUST name the team and include at least two numbers (points, position, streak, goal difference, or home record).
-- season_stakes MUST name the team and state the exact consequence clearly.
+- league_impact MUST name the team and state the exact consequence clearly.
 - opponent_impact MUST name the opponent with at least one number (points, position, or consequence).
 - milestone MUST state: player name, current tally, exact target, and why it is significant.
 - head_to_head MUST use the exact numbers from commentator_facts.head_to_head.
 
 Categories for insights (use exactly one per insight):
-- season_stakes
+- league_impact
 - match_context
 - player_stat
 - team_stat
@@ -245,7 +245,7 @@ Example (with milestone, streak, and head-to-head all present)
             "line": "Haaland reaches 100 Premier League goals — the fastest player in history to the landmark, in just 35 appearances."
         }},
         {{
-            "category": "season_stakes",
+            "category": "league_impact",
             "line": "Manchester City win the title outright today regardless of Arsenal's result."
         }},
         {{

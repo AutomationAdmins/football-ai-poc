@@ -44,6 +44,9 @@ body {
     height: 40px;
     width: auto;
     object-fit: contain;
+    background: white;
+    padding: 6px 12px;
+    border-radius: 6px;
 }
 
 .header-title {
@@ -155,19 +158,19 @@ body {
     flex-shrink: 0;
     width: 70px;
     height: 70px;
-    background: #0B2D8C;
+    background: white;
+    border: 2px solid #E3E8F2;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px;
+    padding: 10px;
 }
 
 .lead-icon img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    filter: brightness(0) invert(1);
 }
 
 .lead-story-text {
@@ -443,7 +446,7 @@ body {
     color: #C4560D;
 }
 
-.category-season_stakes {
+.category-league_impact {
     background: #FFF3CD;
     color: #856404;
 }
@@ -755,6 +758,11 @@ body {
     flex-wrap: wrap;
     gap: 12px;
     align-items: flex-end;
+    margin-bottom: 16px;
+}
+
+.form-row:last-child {
+    margin-bottom: 0;
 }
 
 .form-group {

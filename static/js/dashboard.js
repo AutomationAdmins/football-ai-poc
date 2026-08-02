@@ -73,7 +73,7 @@ async function sendEvent() {
             msg.style.color = '#da3633';
         } else {
             msg.textContent = 'Both inputs processed — refreshing dashboard...';
-            setTimeout(() => location.reload(), 600);
+            setTimeout(() => location.href = '/?show_results=1', 600);
         }
     } catch (e) {
         msg.style.color = '#da3633';

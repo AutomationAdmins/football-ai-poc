@@ -60,8 +60,8 @@
                 <img src="/static/logos/winnercupEPL.png" alt="Trophy">
             </div>
             <div class="lead-story-text">
-                <span class="critical-badge">CRITICAL</span>
-                <h2 class="lead-headline">Summerville's equaliser keeps Leeds on course for Premier League promotion</h2>
+                <span class="critical-badge">{{ lead.priority | upper }}</span>
+                <h2 class="lead-headline">{{ lead.event.player }} ({{ lead.event.team }}) - {{ lead.event.event_type }}</h2>
                 <p class="lead-description">{{ lead.editorial_reason }}</p>
                 <div class="lead-badges">
                     <span class="badge badge-competition">🏆 {{ lead.event.league | default('EFL Championship') }}</span>
@@ -101,17 +101,8 @@
                 <div class="ins-row {% if item.decision %}{{ item.decision }}{% endif %}" id="insight-{{ ridx }}-{{ iidx }}">
                     <div class="ins-num">{{ loop.index }}</div>
                     <div class="ins-txt">{{ item.text }}</div>
-                    <span class="type-badge
-                        {%- if 'goal' in txt or 'equalise' in txt or 'extends' in txt or 'score' in txt %} t-fact
-                        {%- elif 'standing' in txt or '1st' in txt or '3rd' in txt or 'leads the league' in txt %} t-std
-                        {%- elif 'minute' in txt or 'level' in txt or 'favour' in txt %} t-ctx
-                        {%- elif 'milestone' in txt or 'historic' in txt or 'closing in' in txt %} t-mil
-                        {%- else %} t-ed{%- endif %}">
-                        {%- if 'goal' in txt or 'equalise' in txt or 'extends' in txt or 'score' in txt %}FACT
-                        {%- elif 'standing' in txt or '1st' in txt or '3rd' in txt or 'leads the league' in txt %}STANDINGS
-                        {%- elif 'minute' in txt or 'level' in txt or 'favour' in txt %}MATCH CONTEXT
-                        {%- elif 'milestone' in txt or 'historic' in txt or 'closing in' in txt %}PLAYER MILESTONE
-                        {%- else %}EDITORIAL CONTEXT{%- endif %}
+                    <span class="type-badge category-{{ item.category | lower | replace(' ', '_') }}">
+                        {{ item.category | replace('_', ' ') | upper }}
                     </span>
                     <div class="ins-acts" id="acts-{{ ridx }}-{{ iidx }}">
                         {% if item.decision %}
@@ -235,11 +226,11 @@
                         <label>Opponent</label>
                         <input id="input-1-opponent" type="text" placeholder="Opponent name" />
                     </div>
-                    <div class="form-group" style="max-width: 100px;">
+                    <div class="form-group">
                         <label>Minutes</label>
                         <input id="input-1-minutes" type="number" value="87" min="1" max="120" />
                     </div>
-                    <div class="form-group" style="max-width: 100px;">
+                    <div class="form-group">
                         <label>Score</label>
                         <input id="input-1-score" type="text" placeholder="e.g. 2-1" />
                     </div>
@@ -287,11 +278,11 @@
                         <label>Opponent</label>
                         <input id="input-2-opponent" type="text" placeholder="Opponent name" />
                     </div>
-                    <div class="form-group" style="max-width: 100px;">
+                    <div class="form-group">
                         <label>Minutes</label>
                         <input id="input-2-minutes" type="number" value="87" min="1" max="120" />
                     </div>
-                    <div class="form-group" style="max-width: 100px;">
+                    <div class="form-group">
                         <label>Score</label>
                         <input id="input-2-score" type="text" placeholder="e.g. 2-1" />
                     </div>
@@ -303,6 +294,11 @@
             <button class="btn-send" onclick="sendEvent()">Send Both Events</button>
             <div id="status-msg"></div>
         </div>
+    </div>
+    
+    <!-- Reset Dashboard / Home -->
+    <div style="text-align: center; margin-top: 40px; margin-bottom: 40px;">
+        <a href="/reset" class="btn btn-rj" style="text-decoration: none; padding: 12px 24px; font-size: 15px; border-radius: 6px;">Reset Dashboard (Clear Events)</a>
     </div>
 
 </div>

@@ -79,8 +79,19 @@ def health():
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
+def dashboard(request: Request, show_results: str = "0"):
+    global _last_result
+    if show_results != "1":
+        _last_result = {}
     return templates.TemplateResponse("index.html", {"request": request, "result": _last_result})
+
+
+@app.get("/reset")
+def reset_dashboard():
+    global _last_result
+    _last_result = {}
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/")
 
 
 @app.get("/stats", response_class=HTMLResponse)
@@ -174,37 +185,31 @@ def handle_event(payload: EventBatchPayload):
         )
 
         #
-        # Generate Insights
+        # Generate Insights (In Parallel)
         #
+        import concurrent.futures
+        
+        def _fetch_insight_for_event(event):
+            prompt = build_insight_prompt(event["editorial_context"])
+            allowed = flatten_for_grounding(event["editorial_context"])
+            return event, generate_insights(prompt, allowed)
 
-        for event in ranked_results:
-
-            prompt = build_insight_prompt(
-                event["editorial_context"]
-            )
-
-            allowed = flatten_for_grounding(
-                event["editorial_context"]
-            )
-
-            insight_result = generate_insights(
-                prompt,
-                allowed,
-            )
-
-            event["lead_story_line"] = {
-                "text": insight_result["lead_story"],
-            }
-
-            event["insights"] = [
-                {
-                    "category": x["category"],
-                    "text": x["line"],
-                    "facts_used": x.get("facts_used", []),
-                    "decision": None,
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(ranked_results) if ranked_results else 1) as executor:
+            future_to_event = [executor.submit(_fetch_insight_for_event, e) for e in ranked_results]
+            for future in concurrent.futures.as_completed(future_to_event):
+                event, insight_result = future.result()
+                event["lead_story_line"] = {
+                    "text": insight_result["lead_story"],
                 }
-                for x in insight_result["insights"]
-            ]
+                event["insights"] = [
+                    {
+                        "category": x["category"],
+                        "text": x["line"],
+                        "facts_used": x.get("facts_used", []),
+                        "decision": None,
+                    }
+                    for x in insight_result["insights"]
+                ]
 
         _last_result = {
             "results": results,
