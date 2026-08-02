@@ -173,6 +173,9 @@
             <span><strong>Score:</strong> {{ lead.event.score }}</span>
         </div>
         <p class="lead-story-copy">{{ lead.editorial_reason }}</p>
+        {% if lead.lead_story_line %}
+        <p class="lead-story-copy" style="margin-top: 12px; font-weight: 600; font-style: normal;">On-air: {{ lead.lead_story_line.text }}</p>
+        {% endif %}
     </div>
     {% endif %}
     {% for result_item in result.results %}

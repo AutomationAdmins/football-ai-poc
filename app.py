@@ -1,12 +1,14 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from ai_engine import (
+    flatten_for_grounding,
     generate_insights,
     rank_events,
+    GroqRateLimitError,
 )
 
 from event_processor import process_event
@@ -91,119 +93,152 @@ def handle_event(payload: EventBatchPayload):
 
     global _last_result
 
-    results = [
-        _process_input(payload.input_1, 0),
-        _process_input(payload.input_2, 1),
-    ]
+    try:
 
-    valid_events = [
-        r for r in results
-        if r["status"] == "processed"
-    ]
+        results = [
+            _process_input(payload.input_1, 0),
+            _process_input(payload.input_2, 1),
+        ]
 
-    #
-    # Nothing to compare
-    #
+        valid_events = [
+            r for r in results
+            if r["status"] == "processed"
+        ]
 
-    if not valid_events:
+        #
+        # Nothing to compare
+        #
+
+        if not valid_events:
+
+            _last_result = {
+                "results": results,
+                "ranked_results": [],
+                "lead_story": None,
+            }
+
+            return {
+                "status": "processed",
+                "results": results,
+                "ranked_results": [],
+                "lead_story": None,
+            }
+
+        #
+        # Editorial Ranking
+        #
+
+        ranking_prompt = build_editorial_prompt(
+            [
+                e["editorial_context"]
+                for e in valid_events
+            ]
+        )
+
+        ranking = rank_events(ranking_prompt)
+
+        print("\n========== AI RANKING ==========")
+        print(ranking)
+        print("===============================\n")
+
+        for rank_order, item in enumerate(ranking["ranking"], start=1):
+
+            idx = item["event_index"]
+
+            valid_events[idx]["priority"] = item["priority"]
+
+            valid_events[idx]["editorial_reason"] = item["reason"]
+
+            valid_events[idx]["confidence"] = item.get("confidence")
+
+            valid_events[idx]["rank_order"] = rank_order
+
+        #
+        # Highest first
+        #
+
+        ranked_results = sorted(
+            valid_events,
+            key=lambda x: (
+                {
+                    "Critical": 4,
+                    "High": 3,
+                    "Medium": 2,
+                    "Low": 1,
+                }.get(
+                    x.get("priority"),
+                    0,
+                )
+            ),
+            reverse=True,
+        )
+
+        #
+        # Generate Insights
+        #
+
+        for event in ranked_results:
+
+            prompt = build_insight_prompt(
+                event["editorial_context"]
+            )
+
+            allowed = flatten_for_grounding(
+                event["editorial_context"]
+            )
+
+            insight_result = generate_insights(
+                prompt,
+                allowed,
+            )
+
+            event["lead_story_line"] = {
+                "text": insight_result["lead_story"],
+            }
+
+            event["insights"] = [
+                {
+                    "category": x["category"],
+                    "text": x["line"],
+                    "facts_used": x.get("facts_used", []),
+                    "decision": None,
+                }
+                for x in insight_result["insights"]
+            ]
 
         _last_result = {
             "results": results,
-            "ranked_results": [],
-            "lead_story": None,
+            "ranked_results": ranked_results,
+            "lead_story": ranked_results[0] if ranked_results else None,
         }
 
         return {
             "status": "processed",
             "results": results,
-            "ranked_results": [],
-            "lead_story": None,
+            "ranked_results": ranked_results,
+            "lead_story": ranked_results[0] if ranked_results else None,
         }
 
-    #
-    # Editorial Ranking
-    #
+    except GroqRateLimitError as e:
 
-    ranking_prompt = build_editorial_prompt(
-        [
-            e["editorial_context"]
-            for e in valid_events
-        ]
-    )
+        _last_result = {
+            "results": [],
+            "ranked_results": [],
+            "lead_story": None,
+            "rate_limit_error": {
+                "message": "Groq daily token quota exhausted. Please wait and try again.",
+                "retry_after": e.retry_after,
+            },
+        }
 
-    ranking = rank_events(ranking_prompt)
-
-    print("\n========== AI RANKING ==========")
-    print(ranking)
-    print("===============================\n")
-
-    for rank_order, item in enumerate(ranking["ranking"], start=1):
-
-        idx = item["event_index"]
-
-        valid_events[idx]["priority"] = item["priority"]
-
-        valid_events[idx]["editorial_reason"] = item["reason"]
-
-        valid_events[idx]["rank_order"] = rank_order
-
-    #
-    # Highest first
-    #
-
-    ranked_results = sorted(
-        valid_events,
-        key=lambda x: (
-            {
-                "Critical": 4,
-                "High": 3,
-                "Medium": 2,
-                "Low": 1,
-            }.get(
-                x.get("priority"),
-                0,
-            )
-        ),
-        reverse=True,
-    )
-
-    #
-    # Generate Insights
-    #
-
-    for event in ranked_results:
-
-        prompt = build_insight_prompt(
-            event["editorial_context"]
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "rate_limit_exceeded",
+                "message": f"Groq daily token quota exhausted. Retry in: {e.retry_after}",
+                "retry_after": e.retry_after,
+            },
         )
-
-        allowed = event["editorial_context"]["editorial_facts"]
-
-        insights = generate_insights(
-            prompt,
-            allowed,
-        )
-
-        event["insights"] = [
-            {
-                "text": x,
-                "decision": None,
-            }
-            for x in insights
-        ]
-
-    _last_result = {
-        "results": results,
-        "ranked_results": ranked_results,
-        "lead_story": ranked_results[0] if ranked_results else None,
-    }
-
-    return {
-        "status": "processed",
-        "results": results,
-        "ranked_results": ranked_results,
-        "lead_story": ranked_results[0] if ranked_results else None,
-    }
 
 @app.post("/approve/{event_index}/{insight_index}")
 def approve_insight(event_index: int, insight_index: int):

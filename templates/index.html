@@ -137,6 +137,8 @@
         .badge-FULL_TIME  { background: #6e40c9; color: #fff; }
         .badge-ignored    { background: #dde5f0; color: #617086; }
 
+
+
         .stats-table {
             width: 100%;
             border-collapse: collapse;
@@ -152,6 +154,63 @@
         .stats-table td:last-child { font-weight: 600; text-align: right; }
 
         .insights-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+        .lead-story-line {
+            background: linear-gradient(135deg, #0f4aa3 0%, #1a6fd4 100%);
+            color: #fff;
+            border-radius: 8px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+        }
+
+        .lead-story-line-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.85;
+            margin-bottom: 6px;
+        }
+
+        .lead-story-line-text {
+            font-size: 1.05rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .category-badge {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #e8eef8;
+            color: #0f4aa3;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .category-season_stakes { background: #fff3cd; color: #856404; }
+        .category-match_context { background: #d1ecf1; color: #0c5460; }
+        .category-player_stat { background: #d4edda; color: #155724; }
+        .category-team_stat { background: #cce5ff; color: #004085; }
+        .category-opponent_impact { background: #f8d7da; color: #721c24; }
+        .category-head_to_head { background: #e2d5f5; color: #4a235a; }
+        .category-milestone { background: #fdebd0; color: #7d6608; }
+
+        .insight-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .insight-facts {
+            font-size: 0.75rem;
+            color: #617086;
+            font-style: italic;
+        }
 
         .insight-item {
             display: flex;
@@ -408,7 +467,26 @@
 
 <div class="grid">
 
+{% if result and result.rate_limit_error %}
+<div style="background: rgba(227,179,65,0.15); border: 1px solid rgba(227,179,65,0.5); border-radius: 10px; padding: 18px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 14px;">
+    <span style="font-size: 1.5rem;">⏱️</span>
+    <div>
+        <strong style="color: #e3b341; font-size: 1rem;">Groq Rate Limit Reached</strong>
+        <p style="margin: 4px 0 0; color: #8b949e; font-size: 0.88rem;">
+            Daily token quota exhausted (100k tokens/day on free tier).
+            {% if result.rate_limit_error.retry_after != "unknown" %}
+            Retry in <strong style="color:#e3b341;">{{ result.rate_limit_error.retry_after }}</strong>.
+            {% else %}
+            Please wait a few minutes and try again.
+            {% endif %}
+            Quota resets at <strong style="color:#e3b341;">midnight UTC</strong>.
+        </p>
+    </div>
+</div>
+{% endif %}
+
     {% if result and result.lead_story %}
+
     {% set lead = result.lead_story %}
     <div class="card lead-story">
         <h2>Recommended Lead Story</h2>
@@ -420,6 +498,12 @@
             <span>{{ lead.event.score }}</span>
         </div>
         <p class="lead-story-copy">{{ lead.editorial_reason }}</p>
+        {% if lead.lead_story_line %}
+        <div class="lead-story-line" style="margin-top: 14px;">
+            <div class="lead-story-line-label">Commentator Lead Line</div>
+            <div class="lead-story-line-text">{{ lead.lead_story_line.text }}</div>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -476,9 +560,6 @@
                 <span class="value">#{{ result_item.rank_order }} · {{ result_item.priority }}</span>
                 {% endif %}
             </div>
-            {% if result_item.editorial_reason %}
-            <p class="empty-state" style="margin-top:12px; font-style: normal;">{{ result_item.editorial_reason }}</p>
-            {% endif %}
             {% if result_item.reason %}
             <p class="empty-state" style="margin-top:12px;">{{ result_item.reason }}</p>
             {% endif %}
@@ -501,12 +582,23 @@
             {% set result_index = loop.index0 %}
             <div style="margin-bottom: 18px;">
                 <div class="result-section-title">Input {{ result_item.original_input_index + 1 }}{% if result_item.rank_order %} · Ranked #{{ result_item.rank_order }}{% endif %}</div>
+                {% if result_item.lead_story_line %}
+                <div class="lead-story-line">
+                    <div class="lead-story-line-label">Lead Story — On Air</div>
+                    <div class="lead-story-line-text">{{ result_item.lead_story_line.text }}</div>
+                </div>
+                {% endif %}
                 {% if result_item.insights %}
                 <ul class="insights-list" id="insights-list-{{ result_index }}">
                     {% for item in result_item.insights %}
                     <li class="insight-item {% if item.decision %}{{ item.decision }}{% endif %}" id="insight-{{ result_index }}-{{ loop.index0 }}">
                         <span class="insight-rank">#{{ loop.index }}</span>
-                        <span class="insight-text">{{ item.text }}</span>
+                        {% if item.category %}
+                        <span class="category-badge category-{{ item.category }}">{{ item.category | replace('_', ' ') }}</span>
+                        {% endif %}
+                        <div class="insight-meta">
+                            <span class="insight-text">{{ item.text }}</span>
+                        </div>
                         <div class="insight-actions">
                             {% if item.decision %}
                                 <span class="decision-badge {{ item.decision }}">{{ item.decision | upper }}</span>
