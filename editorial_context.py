@@ -150,6 +150,19 @@ def build_commentator_facts(
             player_bits.append("Championship top scorer this season")
     if player.get("notes"):
         player_bits.append(player["notes"])
+    
+    # Add live event data
+    if player.get("xG_this_event") is not None:
+        xg_val = player["xG_this_event"]
+        if xg_val > 0.5:
+            player_bits.append(f"High-quality chance ({xg_val:.2f} xG)")
+        elif xg_val < 0.1:
+            player_bits.append(f"Finished low-quality chance ({xg_val:.2f} xG)")
+    
+    if player.get("assisted_by"):
+        assisters = ", ".join(player["assisted_by"][:2])  # Max 2 names
+        player_bits.append(f"Build-up: {assisters}")
+    
     if player_bits:
         facts["player_highlight"] = "; ".join(player_bits)
 
@@ -158,9 +171,11 @@ def build_commentator_facts(
         team_bits.append(
             f"{team['points']} pts, {team['league_position']} in {editorial.get('competition', '')}"
         )
+    is_home = fixture.get("home_team") == team_name
+    
     if team.get("winning_streak"):
         team_bits.append(f"{team['winning_streak']}-game win streak")
-    if team.get("home_unbeaten"):
+    if team.get("home_unbeaten") and is_home:
         team_bits.append(f"unbeaten in {team['home_unbeaten']} home games")
     if team.get("goal_difference") is not None:
         team_bits.append(f"+{team['goal_difference']} goal difference")
@@ -168,6 +183,20 @@ def build_commentator_facts(
         team_bits.append(
             f"{team['years_out_of_premier_league']} seasons outside the Premier League"
         )
+    
+    # Add live performance data
+    if team.get("pass_accuracy_this_event") is not None:
+        pass_acc = team["pass_accuracy_this_event"]
+        if pass_acc > 85:
+            team_bits.append(f"Excellent passing ({pass_acc:.1f}% accuracy)")
+        elif pass_acc < 70:
+            team_bits.append(f"Struggling with possession ({pass_acc:.1f}% pass accuracy)")
+    
+    if team.get("pressure_index") is not None:
+        pressure = team["pressure_index"]
+        if pressure > 70:
+            team_bits.append(f"High-pressure situation (index: {pressure})")
+    
     if team_bits:
         facts["team_highlight"] = "; ".join(team_bits)
 

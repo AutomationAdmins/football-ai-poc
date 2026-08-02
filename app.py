@@ -18,6 +18,13 @@ from firestore_client import (
     write_insight,
     get_all_pending_insights,
     record_decision,
+    get_used_insight_lines,
+)
+from match_state_tracker import (
+    build_match_state,
+    detect_player_performance,
+    filter_duplicate_insights,
+    format_match_state_for_prompt,
 )
 
 _FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
@@ -35,8 +42,37 @@ def health():
 # Pub/Sub push endpoint — Opta events arrive here from the topic
 # ---------------------------------------------------------------------------
 
+from fastapi import BackgroundTasks
+
+def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, editorial_ctx):
+    try:
+        insight_result = generate_insights(prompt, allowed_facts, editorial_ctx)
+        
+        # Filter out duplicate insights
+        used_lines = editorial_ctx.get("used_insights", [])
+        filtered_insights = filter_duplicate_insights(
+            insight_result["insights"],
+            set(used_lines)
+        )
+        
+        # Only write if we have novel insights
+        if filtered_insights:
+            write_insight(fixture_id, {
+                "lead_story": insight_result["lead_story"],
+                "insights": filtered_insights,
+                "event_type": processed.get("event_type"),
+                "player": processed.get("player"),
+                "team": processed.get("team"),
+                "minute": processed.get("minute"),
+                "score": processed.get("score"),
+            })
+        else:
+            print(f"All insights for {fixture_id} were duplicates - skipped writing")
+    except Exception as e:
+        print(f"Error generating insight in background: {e}")
+
 @app.post("/pubsub/push")
-async def pubsub_push(request: Request):
+async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     envelope = await request.json()
     message = envelope.get("message", {})
     raw_data = message.get("data", "")
@@ -59,28 +95,35 @@ async def pubsub_push(request: Request):
     # Layer 2 — current match history from Firestore
     match_history = get_match_history(fixture_id)
 
+    # Layer 1 — live match state (goals today, hat-tricks, etc.)
+    match_state = build_match_state(match_history, processed)
+
+    # Get previously shown insights for anti-repetition
+    used_insight_lines = get_used_insight_lines(fixture_id)
+
+    # Detect player performance milestones
+    player_performance = None
+    if processed.get("player"):
+        player_performance = detect_player_performance(
+            processed["player"], match_state, processed
+        )
+
     # Build editorial context and prompt
     editorial_ctx = build_editorial_context(processed, stats_context)
+    editorial_ctx["match_state"] = match_state
+    editorial_ctx["player_performance"] = player_performance
+    editorial_ctx["used_insights"] = list(used_insight_lines)[:20]  # Limit to prevent prompt bloat
+
     prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
     allowed_facts = flatten_for_grounding(editorial_ctx)
 
-    insight_result = generate_insights(prompt, allowed_facts, editorial_ctx)
-
-    # Persist event to match log (becomes Layer 2 for the next event)
+    # Persist event to match log BEFORE background task (so next events see it)
     append_match_event(fixture_id, processed)
 
-    # Persist AI insight to Firestore (dashboard reads from here)
-    insight_id = write_insight(fixture_id, {
-        "lead_story": insight_result["lead_story"],
-        "insights": insight_result["insights"],
-        "event_type": processed.get("event_type"),
-        "player": processed.get("player"),
-        "team": processed.get("team"),
-        "minute": processed.get("minute"),
-        "score": processed.get("score"),
-    })
+    # Persist AI insight asynchronously to avoid blocking the webhook
+    background_tasks.add_task(generate_and_save_insight, fixture_id, processed, prompt, allowed_facts, editorial_ctx)
 
-    return JSONResponse(status_code=200, content={"status": "processed", "insight_id": insight_id})
+    return JSONResponse(status_code=200, content={"status": "processing_in_background"})
 
 
 # ---------------------------------------------------------------------------

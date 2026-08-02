@@ -119,17 +119,8 @@ def _fallback_lead_story(editorial_context: dict) -> str:
     else:
         lead = f"{player} scores for {team} against {opponent} — {score} at {minute}'."
 
-    consequence_bits = [
-        facts.get("stakes_line"),
-        facts.get("promotion_stakes"),
-        facts.get("champions_league_stakes"),
-        facts.get("title_race"),
-        facts.get("cross_match"),
-    ]
-    consequence = next((bit for bit in consequence_bits if bit), None)
-    if consequence:
-        lead = f"{lead} {consequence}"
-
+    # We no longer aggressively append consequence_bits to the fallback lead
+    # because it causes massive repetition on the frontend.
     return lead.strip()
 
 
