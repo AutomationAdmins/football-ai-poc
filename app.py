@@ -1,13 +1,26 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from ai_engine import generate_insights
+from ai_engine import (
+    flatten_for_grounding,
+    generate_insights,
+    rank_events,
+    GroqRateLimitError,
+)
+
 from event_processor import process_event
-from prompt_builder import build_prompt
+
 from sports_data import get_context
+
+from editorial_context import build_editorial_context
+
+from prompt_builder import (
+    build_editorial_prompt,
+    build_insight_prompt,
+)
 
 app = FastAPI(title="Football AI Editorial Assistant")
 
@@ -33,27 +46,32 @@ class EventBatchPayload(BaseModel):
     input_2: EventInputPayload
 
 
-def _process_input(payload: EventInputPayload) -> dict:
+def _process_input(payload: EventInputPayload, original_input_index: int) -> dict:
+
     processed = process_event(payload.model_dump())
 
     if processed["status"] == "ignored":
-        return {"status": "ignored", "event": processed, "reason": processed["reason"]}
+        return {
+            "status": "ignored",
+            "original_input_index": original_input_index,
+            "event": processed,
+            "reason": processed["reason"],
+        }
 
     stats_context = get_context(processed)
-    prompt, allowed_facts = build_prompt(processed, stats_context)
 
-    try:
-        insights = generate_insights(prompt, allowed_facts)
-    except Exception as exc:
-        return {"status": "error", "event": processed, "reason": str(exc)}
+    editorial_context = build_editorial_context(
+        processed,
+        stats_context,
+    )
 
     return {
         "status": "processed",
+        "original_input_index": original_input_index,
         "event": processed,
         "stats": stats_context,
-        "insights": [{"text": insight, "decision": None} for insight in insights],
+        "editorial_context": editorial_context,
     }
-
 
 @app.get("/health")
 def health():
@@ -61,8 +79,19 @@ def health():
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
+def dashboard(request: Request, show_results: str = "0"):
+    global _last_result
+    if show_results != "1":
+        _last_result = {}
     return templates.TemplateResponse("index.html", {"request": request, "result": _last_result})
+
+
+@app.get("/reset")
+def reset_dashboard():
+    global _last_result
+    _last_result = {}
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/")
 
 
 @app.get("/stats", response_class=HTMLResponse)
@@ -72,19 +101,149 @@ def stats_dashboard(request: Request):
 
 @app.post("/event")
 def handle_event(payload: EventBatchPayload):
+
     global _last_result
 
-    results = [
-        _process_input(payload.input_1),
-        _process_input(payload.input_2),
-    ]
+    try:
 
-    _last_result = {"results": results}
+        results = [
+            _process_input(payload.input_1, 0),
+            _process_input(payload.input_2, 1),
+        ]
 
-    return {
-        "status": "processed",
-        "results": results,
-    }
+        valid_events = [
+            r for r in results
+            if r["status"] == "processed"
+        ]
+
+        #
+        # Nothing to compare
+        #
+
+        if not valid_events:
+
+            _last_result = {
+                "results": results,
+                "ranked_results": [],
+                "lead_story": None,
+            }
+
+            return {
+                "status": "processed",
+                "results": results,
+                "ranked_results": [],
+                "lead_story": None,
+            }
+
+        #
+        # Editorial Ranking
+        #
+
+        ranking_prompt = build_editorial_prompt(
+            [
+                e["editorial_context"]
+                for e in valid_events
+            ]
+        )
+
+        ranking = rank_events(ranking_prompt)
+
+        print("\n========== AI RANKING ==========")
+        print(ranking)
+        print("===============================\n")
+
+        for rank_order, item in enumerate(ranking["ranking"], start=1):
+
+            idx = item["event_index"]
+
+            valid_events[idx]["priority"] = item["priority"]
+
+            valid_events[idx]["editorial_reason"] = item["reason"]
+
+            valid_events[idx]["confidence"] = item.get("confidence")
+
+            valid_events[idx]["rank_order"] = rank_order
+
+        #
+        # Highest first
+        #
+
+        ranked_results = sorted(
+            valid_events,
+            key=lambda x: (
+                {
+                    "Critical": 4,
+                    "High": 3,
+                    "Medium": 2,
+                    "Low": 1,
+                }.get(
+                    x.get("priority"),
+                    0,
+                )
+            ),
+            reverse=True,
+        )
+
+        #
+        # Generate Insights (In Parallel)
+        #
+        import concurrent.futures
+        
+        def _fetch_insight_for_event(event):
+            prompt = build_insight_prompt(event["editorial_context"])
+            allowed = flatten_for_grounding(event["editorial_context"])
+            return event, generate_insights(prompt, allowed)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(ranked_results) if ranked_results else 1) as executor:
+            future_to_event = [executor.submit(_fetch_insight_for_event, e) for e in ranked_results]
+            for future in concurrent.futures.as_completed(future_to_event):
+                event, insight_result = future.result()
+                event["lead_story_line"] = {
+                    "text": insight_result["lead_story"],
+                }
+                event["insights"] = [
+                    {
+                        "category": x["category"],
+                        "text": x["line"],
+                        "facts_used": x.get("facts_used", []),
+                        "decision": None,
+                    }
+                    for x in insight_result["insights"]
+                ]
+
+        _last_result = {
+            "results": results,
+            "ranked_results": ranked_results,
+            "lead_story": ranked_results[0] if ranked_results else None,
+        }
+
+        return {
+            "status": "processed",
+            "results": results,
+            "ranked_results": ranked_results,
+            "lead_story": ranked_results[0] if ranked_results else None,
+        }
+
+    except GroqRateLimitError as e:
+
+        _last_result = {
+            "results": [],
+            "ranked_results": [],
+            "lead_story": None,
+            "rate_limit_error": {
+                "message": "Groq daily token quota exhausted. Please wait and try again.",
+                "retry_after": e.retry_after,
+            },
+        }
+
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "rate_limit_exceeded",
+                "message": f"Groq daily token quota exhausted. Retry in: {e.retry_after}",
+                "retry_after": e.retry_after,
+            },
+        )
 
 @app.post("/approve/{event_index}/{insight_index}")
 def approve_insight(event_index: int, insight_index: int):

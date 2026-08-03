@@ -84,11 +84,37 @@
             font-weight: 600;
         }
 
+        .lead-story {
+            grid-column: 1 / -1;
+            border: 1px solid #bfd2ef;
+            background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+        }
+
         .result-section-title {
             font-size: 0.95rem;
             margin-bottom: 12px;
             color: #0f4aa3;
             font-weight: 600;
+        }
+
+        .lead-story-headline {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #0f4aa3;
+            margin-bottom: 8px;
+        }
+
+        .lead-story-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+
+        .lead-story-copy {
+            color: #334155;
+            line-height: 1.5;
         }
 
         .event-grid {
@@ -135,10 +161,27 @@
 
 {% if result and result.results %}
 <div class="grid">
+    {% if result.lead_story %}
+    {% set lead = result.lead_story %}
+    <div class="card lead-story">
+        <h2>Recommended Lead Story</h2>
+        <div class="lead-story-headline">Input {{ lead.original_input_index + 1 }} is the current top editorial choice</div>
+        <div class="lead-story-meta">
+            <span><strong>Priority:</strong> {{ lead.priority | default('Ranked') }}</span>
+            <span><strong>Fixture:</strong> {{ lead.event.team }} vs {{ lead.event.opponent }}</span>
+            <span><strong>Minute:</strong> {{ lead.event.minute }}'</span>
+            <span><strong>Score:</strong> {{ lead.event.score }}</span>
+        </div>
+        <p class="lead-story-copy">{{ lead.editorial_reason }}</p>
+        {% if lead.lead_story_line %}
+        <p class="lead-story-copy" style="margin-top: 12px; font-weight: 600; font-style: normal;">On-air: {{ lead.lead_story_line.text }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
     {% for result_item in result.results %}
     <div class="card">
         <h2>Combined Stats</h2>
-        <div class="result-section-title">Input {{ loop.index }}</div>
+        <div class="result-section-title">Input {{ result_item.original_input_index + 1 }}{% if result_item.rank_order %} · Ranked #{{ result_item.rank_order }} · {{ result_item.priority }}{% endif %}</div>
         {% if result_item and result_item.event %}
             {% set ev = result_item.event %}
             <div class="event-grid">
@@ -157,6 +200,9 @@
                 <span class="label">Score</span>
                 <span class="value">{{ ev.score }}</span>
             </div>
+            {% if result_item.editorial_reason %}
+            <p class="empty-state" style="font-style: normal; margin-bottom: 16px;">{{ result_item.editorial_reason }}</p>
+            {% endif %}
         {% endif %}
 
         {% if result_item and result_item.stats %}
