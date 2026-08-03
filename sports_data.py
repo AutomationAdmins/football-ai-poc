@@ -59,16 +59,14 @@ def _apply_increments(context: dict, event_type: str) -> dict:
     player_fields = _PLAYER_INCREMENTS.get(event_type, [])
     for player_stats in updated.get("player_stats", {}).values():
         for field in player_fields:
-            if field not in player_stats:
-                player_stats[field] = 0
-            player_stats[field] += 1
+            if field in player_stats:
+                player_stats[field] += 1
 
     team_fields = _TEAM_INCREMENTS.get(event_type, [])
     for team_stats in updated.get("team_stats", {}).values():
         for field in team_fields:
-            if field not in team_stats:
-                team_stats[field] = 0
-            team_stats[field] += 1
+            if field in team_stats:
+                team_stats[field] += 1
 
     return updated
 

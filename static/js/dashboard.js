@@ -66,11 +66,10 @@ async function sendEvent() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        
         const data = await res.json();
 
-        if (!res.ok || data.status === 'error' || data.error) {
-            msg.textContent = `AI error: ${data.reason || data.message || data.error}`;
+        if (data.status === 'error') {
+            msg.textContent = `AI error: ${data.reason}`;
             msg.style.color = '#da3633';
         } else {
             msg.textContent = 'Both inputs processed — refreshing dashboard...';
