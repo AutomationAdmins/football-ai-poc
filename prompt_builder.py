@@ -137,6 +137,8 @@ def build_insight_prompt(editorial_context: dict):
     # Surface key signals to guide the LLM
     player = cleaned.get("player", {})
     commentator = cleaned.get("commentator_facts", {})
+    event_info = cleaned.get("event", {})
+    event_type = event_info.get("event_type", "GOAL").upper()
 
     has_milestone = bool(
         player.get("next_milestone")
@@ -173,6 +175,23 @@ def build_insight_prompt(editorial_context: dict):
             "You MUST include this streak stat in BOTH the match_context line AND the player_stat line."
         )
 
+    if event_type == "RED_CARD":
+        lead_format = '"[Full Player Name] is sent off for [Team] against [Opponent] at [Minute]\'. [Score]. [One key consequence OR one standout stat]."'
+        match_context_format = '"[Player] is sent off for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = ""
+    elif event_type == "PENALTY":
+        lead_format = '"[Full Player Name] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        match_context_format = '"[Player] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = ""
+    elif event_type == "OWN_GOAL":
+        lead_format = '"[Full Player Name] scores an own goal for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        match_context_format = '"[Player] scores an own goal for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = ""
+    else:
+        lead_format = '"[Full Player Name] scores [goal type] for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        match_context_format = '"[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = '- Goal type must be specific: "the equaliser", "the go-ahead goal", "a penalty", "his Nth goal of the season", "his 100th Premier League goal"\n   '
+
     prompt = f"""
 You are a broadcast football statistician preparing lines for live TV commentators.
 
@@ -184,9 +203,8 @@ Use player, team, fixture, and league sections for supporting detail.
 Rules
 
 1. LEAD STORY — This is the commentator's opening line on live television. It must be punchy, data-rich, and worth reading aloud.
-   MANDATORY FORMAT: "[Full Player Name] scores [goal type] for [Team] against [Opponent] — [Score] at [Minute]'. [One key consequence OR one standout stat]."
-   - Goal type must be specific: "the equaliser", "the go-ahead goal", "a penalty", "his Nth goal of the season", "his 100th Premier League goal"
-   - Always include the score AND minute — never omit either
+   MANDATORY FORMAT: {lead_format}
+   {goal_type_rule}- Always include the score AND minute — never omit either
    - The consequence MUST state the exact season impact (e.g. "Leeds head for automatic promotion", "Arsenal move to within one win of the title", "Chelsea retain their Champions League place")
    - If a milestone exists, weave it into the lead instead of the consequence
    - Max 40 words. No vague phrases like "big moment" or "crucial goal" — use facts
@@ -194,6 +212,7 @@ Rules
      * "Summerville scores the equaliser for Leeds against Sunderland — 1-1 at 87'. His 24th Championship goal — Leeds head for automatic promotion after 3 years away."
      * "Haaland scores his 100th Premier League goal for Manchester City against Liverpool — 3-1 at 87'. The fastest player in history to reach the landmark."
      * "Palmer scores the 90th-minute equaliser for Chelsea against Arsenal — 1-1. Chelsea hold onto their Champions League place — Newcastle United stay 5th."
+     * "Van Dijk is sent off for Liverpool against Manchester United at 87'. 1-1. Liverpool's title hopes suffer a massive blow."
    - Examples of BAD leads (DO NOT write these):
      * "Summerville scores for Leeds — promotion." ❌ (no score, no minute, no data)
      * "Haaland goal — City win title." ❌ (vague, no numbers)
@@ -216,8 +235,8 @@ Rules
 
 Data Specificity Rules — CRITICAL:
 
-- match_context MUST follow: "[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]'." Then append the player's consecutive streak if available, or their season goal tally.
-- player_stat MUST name the player and include: goals, assists (if available), and the consecutive streak (if available). Example: "Saka has 23 goals and 14 assists this season — 7 consecutive goal involvements."
+- match_context MUST follow: {match_context_format} Then append the player's consecutive streak if available, or their season goal tally.
+- player_stat MUST name the player and include: goals, assists (if available), own_goals (if available), and the consecutive streak (if available). Example: "Saka has 23 goals and 14 assists this season — 7 consecutive goal involvements."
 - team_stat MUST name the team and include at least two numbers (points, position, streak, goal difference, or home record).
 - league_impact MUST name the team and state the exact consequence clearly.
 - opponent_impact MUST name the opponent with at least one number (points, position, or consequence).
