@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+_GOAL_LIKE_EVENTS = {"GOAL", "PENALTY", "OWN_GOAL"}
+
 def build_live_match_context(event: dict) -> dict:
     """
     Derive objective live match facts from the incoming event.
@@ -9,6 +11,7 @@ def build_live_match_context(event: dict) -> dict:
     live = {}
 
     score = event.get("score")
+    event_type = (event.get("event_type") or "").upper()
 
     live["score"] = score
     live["minute"] = event.get("minute")
@@ -16,7 +19,7 @@ def build_live_match_context(event: dict) -> dict:
 
     live["goal_type"] = "unknown"
 
-    if score:
+    if score and event_type in _GOAL_LIKE_EVENTS:
 
         try:
             home, away = map(int, score.split("-"))
@@ -70,13 +73,39 @@ def build_commentator_facts(
     opponent = event.get("opponent")
     minute = event.get("minute")
     score = event.get("score")
+    event_type = (event.get("event_type") or "").upper()
     goal_type = live_state.get("goal_type", "unknown")
     gt_label = _GOAL_TYPE_LABELS.get(goal_type, "goal")
 
     if minute and score and team_name and opponent:
-        facts["what_happened"] = (
-            f"{minute}' {gt_label} — {score} ({team_name} vs {opponent})"
-        )
+        if event_type == "RED_CARD":
+            facts["what_happened"] = (
+                f"{minute}' red card — {score} ({team_name} vs {opponent})"
+            )
+        elif event_type == "PENALTY":
+            facts["what_happened"] = (
+                f"{minute}' penalty goal — {score} ({team_name} vs {opponent})"
+            )
+        elif event_type == "OWN_GOAL":
+            facts["what_happened"] = (
+                f"{minute}' own goal — {score} ({team_name} vs {opponent})"
+            )
+        elif event_type == "HALF_TIME":
+            facts["what_happened"] = (
+                f"Half-time at {minute}' — {score} ({team_name} vs {opponent})"
+            )
+        elif event_type == "FULL_TIME":
+            facts["what_happened"] = (
+                f"Full-time at {minute}' — {score} ({team_name} vs {opponent})"
+            )
+        elif event_type == "VAR_DECISION":
+            facts["what_happened"] = (
+                f"{minute}' VAR decision — {score} ({team_name} vs {opponent})"
+            )
+        else:
+            facts["what_happened"] = (
+                f"{minute}' {gt_label} — {score} ({team_name} vs {opponent})"
+            )
 
     facts["goal_type"] = goal_type
     facts["minute"] = minute

@@ -179,6 +179,18 @@ def build_insight_prompt(editorial_context: dict):
         lead_format = '"[Full Player Name] is sent off for [Team] against [Opponent] at [Minute]\'. [Score]. [One key consequence OR one standout stat]."'
         match_context_format = '"[Player] is sent off for [Team] against [Opponent] — [Score] at [Minute]\'."'
         goal_type_rule = ""
+    elif event_type == "HALF_TIME":
+        lead_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        match_context_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = ""
+    elif event_type == "FULL_TIME":
+        lead_format = '"Full-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        match_context_format = '"Full-time in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = ""
+    elif event_type == "VAR_DECISION":
+        lead_format = '"VAR decision in [Team] vs [Opponent] at [Minute]\' — [Score]. [One key consequence OR one standout stat]."'
+        match_context_format = '"VAR decision in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = ""
     elif event_type == "PENALTY":
         lead_format = '"[Full Player Name] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
         match_context_format = '"[Player] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'."'

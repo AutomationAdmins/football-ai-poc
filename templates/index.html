@@ -53,6 +53,7 @@
     <!-- Recommended Lead Story -->
     {% if result and result.lead_story %}
     {% set lead = result.lead_story %}
+    {% set lead_event_type = lead.event.event_type | default('EVENT') %}
     <div class="section-header">RECOMMENDED LEAD STORY</div>
     <div class="lead-story-card">
         <div class="lead-story-content">
@@ -66,7 +67,10 @@
                 <div class="lead-badges">
                     <span class="badge badge-competition">🏆 {{ lead.event.league | default('EFL Championship') }}</span>
                     <span class="badge badge-time">⏱ {{ lead.event.minute }}'</span>
-                    <span class="badge badge-goal">⚽ GOAL</span>
+                    <span class="badge badge-goal">
+                        {% if lead_event_type == 'GOAL' %}⚽{% elif lead_event_type == 'PENALTY' %}🎯{% elif lead_event_type == 'RED_CARD' %}🚩{% elif lead_event_type == 'OWN_GOAL' %}🥅{% elif lead_event_type == 'VAR_DECISION' %}📺{% elif lead_event_type == 'HALF_TIME' %}⏸{% elif lead_event_type == 'FULL_TIME' %}🏁{% else %}📌{% endif %}
+                        {{ lead_event_type | replace('_', ' ') }}
+                    </span>
                     <span class="badge badge-context">⭐ {{ lead.priority | default('Promotion Decider') }}</span>
                 </div>
             </div>
@@ -136,10 +140,14 @@
     {% if result and result.results %}
     <div class="live-events-grid">
         {% for result_item in result.results %}
+        {% set item_event_type = result_item.event.event_type | default('EVENT') %}
         <div class="match-card">
             <div class="match-header">
                 <span class="event-label">EVENT {{ result_item.original_input_index + 1 }}</span>
-                <span class="goal-indicator">⚽ GOAL</span>
+                <span class="goal-indicator">
+                    {% if item_event_type == 'GOAL' %}⚽{% elif item_event_type == 'PENALTY' %}🎯{% elif item_event_type == 'RED_CARD' %}🚩{% elif item_event_type == 'OWN_GOAL' %}🥅{% elif item_event_type == 'VAR_DECISION' %}📺{% elif item_event_type == 'HALF_TIME' %}⏸{% elif item_event_type == 'FULL_TIME' %}🏁{% else %}📌{% endif %}
+                    {{ item_event_type | replace('_', ' ') }}
+                </span>
             </div>
             <div class="match-score-section">
                 <div class="team-section">

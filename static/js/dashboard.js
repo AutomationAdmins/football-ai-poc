@@ -38,6 +38,47 @@ function applyLeaguePreset(inputIndex) {
     document.getElementById(`input-${inputIndex}-score`).value = preset.score;
 }
 
+function setInputPayload(inputIndex, inputData) {
+    if (!inputData) {
+        return;
+    }
+
+    const eventEl = document.getElementById(`input-${inputIndex}-event`);
+    const leagueEl = document.getElementById(`input-${inputIndex}-league`);
+
+    if (inputData.event) {
+        eventEl.value = inputData.event;
+    }
+
+    if (inputData.league) {
+        leagueEl.value = inputData.league;
+    }
+
+    document.getElementById(`input-${inputIndex}-player`).value = inputData.player || '';
+    document.getElementById(`input-${inputIndex}-team`).value = inputData.team || '';
+    document.getElementById(`input-${inputIndex}-opponent`).value = inputData.opponent || '';
+    document.getElementById(`input-${inputIndex}-minutes`).value = inputData.minutes || 87;
+    document.getElementById(`input-${inputIndex}-score`).value = inputData.score || '';
+}
+
+function restoreInputsFromSession() {
+    const raw = sessionStorage.getItem('lastEventPayload');
+
+    if (!raw) {
+        return false;
+    }
+
+    try {
+        const payload = JSON.parse(raw);
+        setInputPayload(1, payload.input_1);
+        setInputPayload(2, payload.input_2);
+        return true;
+    } catch (e) {
+        console.warn('Unable to restore previous input payload', e);
+        return false;
+    }
+}
+
 function buildInputPayload(inputIndex) {
     return {
         event: document.getElementById(`input-${inputIndex}-event`).value,
@@ -55,6 +96,8 @@ async function sendEvent() {
         input_1: buildInputPayload(1),
         input_2: buildInputPayload(2),
     };
+
+    sessionStorage.setItem('lastEventPayload', JSON.stringify(payload));
 
     const msg = document.getElementById('status-msg');
     msg.style.color = '#58a6ff';
@@ -99,7 +142,22 @@ async function decide(eventIndex, insightIndex, action) {
     actionsDiv.appendChild(badge);
 }
 
-// Initialize presets on page load
-applyLeaguePreset(1);
-document.getElementById('input-2-league').value = 'EFL Championship';
-applyLeaguePreset(2);
+// Initialize defaults only on a fresh load, otherwise keep the most recently submitted values.
+(function initializeForm() {
+    const params = new URLSearchParams(window.location.search);
+    const isResultsView = params.get('show_results') === '1';
+
+    let restored = false;
+
+    if (isResultsView) {
+        restored = restoreInputsFromSession();
+    } else {
+        sessionStorage.removeItem('lastEventPayload');
+    }
+
+    if (!restored) {
+        applyLeaguePreset(1);
+        document.getElementById('input-2-league').value = 'EFL Championship';
+        applyLeaguePreset(2);
+    }
+})();
