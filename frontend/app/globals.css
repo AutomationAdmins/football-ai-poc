@@ -1,35 +1,39 @@
 :root {
-  color-scheme: dark;
-  --bg: #07111f;
-  --bg-elevated: #0c1727;
-  --panel: rgba(10, 18, 30, 0.9);
-  --panel-border: rgba(160, 187, 255, 0.16);
-  --text: #e9efff;
-  --muted: #9db0d1;
-  --accent: #68a6ff;
-  --accent-strong: #92c5ff;
+  color-scheme: light;
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --panel-border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #003791; /* Sky Sports Blue */
+  --accent-light: #e0e7ff;
+  --accent-strong: #00225e;
   --approve: #1f8a5b;
   --reject: #c74b4b;
-  --shadow: 0 24px 64px rgba(0, 0, 0, 0.38);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 * {
   box-sizing: border-box;
 }
 
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+.dot-blinking {
+  animation: blink 1s infinite;
+}
+
 html,
 body {
   margin: 0;
   min-height: 100%;
-  background:
-    radial-gradient(circle at top left, rgba(104, 166, 255, 0.18), transparent 24%),
-    radial-gradient(circle at top right, rgba(127, 88, 255, 0.16), transparent 28%),
-    linear-gradient(180deg, #050b14 0%, #07111f 100%);
+  background-color: var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -45,20 +49,21 @@ button {
 }
 
 .hero {
-  border: 1px solid var(--panel-border);
-  background: linear-gradient(180deg, rgba(10, 18, 30, 0.96), rgba(8, 15, 28, 0.9));
-  box-shadow: var(--shadow);
-  border-radius: 24px;
+  background-color: var(--accent);
+  color: #ffffff;
+  border-radius: 12px;
   padding: 28px;
-  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+  margin-bottom: 32px;
 }
 
 .hero__eyebrow {
   text-transform: uppercase;
-  letter-spacing: 0.26em;
-  font-size: 12px;
-  color: var(--muted);
+  letter-spacing: 0.1em;
+  font-size: 14px;
+  color: #93c5fd;
   margin-bottom: 16px;
+  font-weight: 600;
 }
 
 .hero__row {
@@ -70,77 +75,149 @@ button {
 
 .hero h1 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 4rem);
-  line-height: 0.96;
-  letter-spacing: -0.05em;
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
 }
 
 .hero p {
   max-width: 760px;
   margin: 14px 0 0;
-  color: var(--muted);
+  color: #bfdbfe;
   font-size: 1rem;
   line-height: 1.6;
 }
 
-.hero__stats,
-.hero__meta,
-.card__topline,
-.card__subline,
-.card__actions {
+.hero__stats {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.hero__meta {
-  margin-top: 20px;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--muted);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 18px;
-}
-
-.content {
-  margin-top: 24px;
-}
-
-.match-group {
-  margin-bottom: 48px;
-}
-
-.match-group h2 {
-  font-size: 1.5rem;
+/* Match Scoreboard */
+.scoreboard {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 24px;
   margin-bottom: 24px;
-  color: var(--accent-strong);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: var(--shadow);
+}
+
+.scoreboard__header {
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 20px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 12px;
 }
 
+.scoreboard__teams {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+.scoreboard__team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 120px;
+}
+
+.scoreboard__logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.scoreboard__team-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-transform: uppercase;
+}
+
+.scoreboard__score-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.scoreboard__score {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.scoreboard__minute {
+  font-size: 1rem;
+  color: var(--muted);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.scoreboard__recent-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  background: var(--bg);
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.scoreboard__recent-player {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Timeline / Event Cards */
 .timeline {
   display: flex;
   flex-direction: column;
   gap: 24px;
   position: relative;
   padding-left: 24px;
-  border-left: 2px solid rgba(160, 187, 255, 0.2);
 }
 
-.timeline-event {
-  position: relative;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: var(--shadow);
-}
-
-.timeline-event::before {
+.timeline::before {
   content: '';
   position: absolute;
-  left: -30px;
-  top: 24px;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--panel-border);
+}
+
+.event-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.event-card::before {
+  content: '';
+  position: absolute;
+  left: -29px;
+  top: 28px;
   width: 10px;
   height: 10px;
   background: var(--accent);
@@ -148,70 +225,127 @@ button {
   box-shadow: 0 0 0 4px var(--bg);
 }
 
-.timeline-event h3 {
-  margin: 14px 0 8px;
-  font-size: 1.2rem;
-  line-height: 1.25;
-  letter-spacing: -0.03em;
+.event-card__header {
+  background-color: var(--accent);
+  color: white;
+  padding: 16px 24px;
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0.45rem 0.8rem;
-  font-size: 0.78rem;
-  letter-spacing: 0.02em;
-  color: #eff5ff;
-  background: rgba(104, 166, 255, 0.12);
-  border: 1px solid rgba(104, 166, 255, 0.18);
+.event-card__eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #93c5fd;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
-.card__subline {
-  color: var(--muted);
-  font-size: 0.92rem;
-  margin-bottom: 14px;
+.event-card__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.event-card__body {
+  padding: 0 24px;
 }
 
 .insights-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 10px;
 }
 
 .insights-list li {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 10px;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--panel-border);
+  gap: 16px;
 }
 
-.insights-list strong {
-  font-size: 0.72rem;
-  letter-spacing: 0.15em;
+.insights-list li:last-child {
+  border-bottom: none;
+}
+
+.insight-number {
+  background: var(--accent);
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.insight-text {
+  flex: 1;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.badge--light {
+  background: var(--accent-light);
   color: var(--accent-strong);
 }
 
-.insights-list span {
-  color: #dfe8ff;
-  line-height: 1.55;
+.badge--dark {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
-.card__actions {
-  margin-top: 16px;
+.badge--red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge--green {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge--yellow {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.event-card__actions {
+  padding: 16px 24px;
+  background: #f8fafc;
+  border-top: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .button {
   appearance: none;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.8rem 1.1rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
-  color: white;
-  transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+  transition: all 160ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .button:hover:not(:disabled) {
@@ -224,31 +358,47 @@ button {
 }
 
 .button--ghost {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: white;
+}
+
+.button--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .button--approve {
-  background: linear-gradient(180deg, #289569, var(--approve));
-  box-shadow: 0 18px 30px rgba(31, 138, 91, 0.24);
+  background: white;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.button--approve:hover:not(:disabled) {
+  background: #f0fdf4;
 }
 
 .button--reject {
-  background: linear-gradient(180deg, #df6161, var(--reject));
-  box-shadow: 0 18px 30px rgba(199, 75, 75, 0.24);
+  background: white;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.button--reject:hover:not(:disabled) {
+  background: #fef2f2;
 }
 
 .empty-state {
-  border: 1px solid var(--panel-border);
   background: var(--panel);
-  border-radius: 22px;
-  box-shadow: var(--shadow);
-  padding: 40px 24px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 48px 24px;
   text-align: center;
+  box-shadow: var(--shadow);
 }
 
 .empty-state h2 {
   margin: 0 0 8px;
+  color: var(--text);
 }
 
 .empty-state p {
