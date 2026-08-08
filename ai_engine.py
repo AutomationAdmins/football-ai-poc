@@ -2,10 +2,18 @@ import json
 import os
 import re
 
-import requests
+from openai import OpenAI
 
-_API_KEY = os.environ.get("GEMINI_API_KEY")
-_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+_API_KEY = os.environ.get("GROQ_API_KEY")
+_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=_API_KEY, base_url="https://api.groq.com/openai/v1")
+    return _client
 
 
 # ---------------------------------------------------------
@@ -76,17 +84,13 @@ def _is_grounded(text, allowed_facts):
 
 
 def _chat(prompt: str, max_tokens: int = 800) -> str:
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{_MODEL}:generateContent?key={_API_KEY}"
+    response = _get_client().chat.completions.create(
+        model=_MODEL,
+        temperature=0,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
     )
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens},
-    }
-    resp = requests.post(url, json=body, timeout=60)
-    resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return response.choices[0].message.content
 
 
 # ---------------------------------------------------------
