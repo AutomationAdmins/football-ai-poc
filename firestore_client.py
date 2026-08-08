@@ -63,17 +63,12 @@ def get_pending_insights(fixture_id: str) -> list[dict]:
 
 def get_all_pending_insights() -> list[dict]:
     """Return pending insights across all fixtures for the dashboard."""
-    results = []
-    fixtures = _get_db().collection("insights").stream()
-    for fixture_doc in fixtures:
-        items = (
-            fixture_doc.reference.collection("items")
-            .where("status", "==", "pending")
-            .stream()
-        )
-        for doc in items:
-            results.append({"id": doc.id, "fixture_id": fixture_doc.id, **doc.to_dict()})
-    return results
+    docs = (
+        _get_db().collection_group("items")
+        .where("status", "==", "pending")
+        .stream()
+    )
+    return [{"id": doc.id, "fixture_id": doc.reference.parent.parent.id, **doc.to_dict()} for doc in docs]
 
 
 # ---------------------------------------------------------------------------
