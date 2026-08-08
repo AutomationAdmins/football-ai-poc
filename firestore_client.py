@@ -69,7 +69,6 @@ def get_all_pending_insights() -> list[dict]:
         items = (
             fixture_doc.reference.collection("items")
             .where("status", "==", "pending")
-            .order_by("created_at", direction=firestore.Query.DESCENDING)
             .stream()
         )
         for doc in items:

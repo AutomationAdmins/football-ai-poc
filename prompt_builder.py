@@ -1,4 +1,12 @@
 import json
+from datetime import datetime
+
+
+def _json_safe(obj):
+    """Convert non-serializable types (e.g. Firestore timestamps) to strings."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return str(obj)
 
 
 def _clean_context(context: dict) -> dict:
@@ -309,7 +317,7 @@ Context
 
 Match History (events in this match before the current event)
 
-{json.dumps(match_history or [], indent=2)}
+{json.dumps(match_history or [], indent=2, default=_json_safe)}
 """
 
     return prompt
