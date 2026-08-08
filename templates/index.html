@@ -3,36 +3,83 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Soccer Saturday - Intelligent Insights Generator</title>
+    <title>Soccer Saturday - Live Insights Dashboard</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .insight-card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px; margin-bottom:20px; }
+        .lead-line { font-size:1.2em; font-weight:bold; color:#e6edf3; margin-bottom:12px; }
+        .insight-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid #21262d; }
+        .insight-row:last-child { border-bottom:none; }
+        .category-badge { font-size:0.7em; padding:3px 8px; border-radius:4px; background:#21262d; color:#8b949e; text-transform:uppercase; white-space:nowrap; }
+        .insight-line { flex:1; color:#c9d1d9; font-size:0.95em; }
+        .btn-ap { background:#238636; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; }
+        .btn-rj { background:#da3633; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; }
+        .fixture-label { font-size:0.75em; color:#8b949e; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px; }
+        .event-meta { font-size:0.85em; color:#8b949e; margin-bottom:10px; }
+        .empty-state { color:#8b949e; text-align:center; padding:40px; }
+        .refresh-btn { background:#1f6feb; color:#fff; border:none; padding:8px 20px; border-radius:6px; cursor:pointer; font-size:0.9em; float:right; }
+    </style>
 </head>
 <body>
 
-<!-- Sky Sports Header -->
 <header class="sky-header">
     <div class="header-container">
         <div class="logo-section">
             <img src="/static/logos/skysports.png" alt="Sky Sports" class="sky-logo-img">
         </div>
-        <h1 class="header-title">Soccer Saturday - Intelligent Insights Generator</h1>
+        <h1 class="header-title">Soccer Saturday — Live Insights Dashboard</h1>
         <div class="header-right">
-            <div class="live-indicator">
-                <span class="live-dot"></span>
-                LIVE
-            </div>
-            <div class="date-display" id="current-date">
-                📅
-            </div>
-            <a href="/stats" class="stats-link">Stats</a>
+            <div class="live-indicator"><span class="live-dot"></span>LIVE</div>
+            <div class="date-display" id="current-date">📅</div>
         </div>
     </div>
 </header>
 
-<!-- Main Container -->
 <div class="main-container">
 
-    <!-- Rate Limit Warning -->
-    {% if result and result.rate_limit_error %}
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+        <div class="section-header" style="margin:0">AI-GENERATED INSIGHTS — STATISTICIAN REVIEW</div>
+        <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
+    </div>
+
+    {% if insights %}
+        {% for insight in insights %}
+        <div class="insight-card">
+            <div class="fixture-label">{{ insight.fixture_id }} · {{ insight.event_type | default('EVENT') | replace('_',' ') }} · {{ insight.minute }}'  {{ insight.score }}</div>
+            {% if insight.player %}<div class="event-meta">👤 {{ insight.player }} — {{ insight.team }}</div>{% endif %}
+            <div class="lead-line">{{ insight.lead_story }}</div>
+            {% for item in insight.insights %}
+            <div class="insight-row">
+                <span class="category-badge">{{ item.category | replace('_',' ') }}</span>
+                <span class="insight-line">{{ item.line }}</span>
+            </div>
+            {% endfor %}
+            <div style="margin-top:14px; display:flex; gap:10px;">
+                <button class="btn-ap" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','approve',this)">✓ Approve</button>
+                <button class="btn-rj" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','reject',this)">✗ Reject</button>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">No pending insights. Run the simulation to generate live events.</div>
+    {% endif %}
+
+</div>
+
+<script>
+(function() {
+    const now = new Date();
+    document.getElementById('current-date').textContent = '📅 ' + now.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'});
+})();
+
+async function decide(fixtureId, insightId, action, btn) {
+    const endpoint = `/${action}/${fixtureId}/${insightId}`;
+    await fetch(endpoint, { method: 'POST' });
+    btn.parentElement.innerHTML = `<span style="color:${action==='approve'?'#3fb950':'#f85149'};font-weight:bold">${action.toUpperCase()}D</span>`;
+}
+</script>
+</body>
+</html>
     <div class="rate-limit-warning">
         <span class="warning-icon">⏱️</span>
         <div class="warning-content">
