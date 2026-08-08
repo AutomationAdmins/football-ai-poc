@@ -5,7 +5,7 @@ import re
 import requests
 
 _API_KEY = os.environ.get("GEMINI_API_KEY")
-_MODEL = os.environ.get("GEMINI_MODEL", "gemini-pro")
+_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 
 # ---------------------------------------------------------
