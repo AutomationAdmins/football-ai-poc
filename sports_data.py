@@ -1,8 +1,9 @@
 import copy
-import json
 import os
 
-_STATS_PATH = os.path.join(os.path.dirname(__file__), "historical_stats.json")
+from gcs_client import get_prematch_stats
+
+_FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
 
 # Maps event type to which player/team counters to increment by 1
 _PLAYER_INCREMENTS = {
@@ -19,8 +20,7 @@ _TEAM_INCREMENTS = {
 
 
 def _load_stats() -> dict:
-    with open(_STATS_PATH, "r") as f:
-        return json.load(f)
+    return get_prematch_stats(_FIXTURE_ID)
 
 
 def _matches_league(entity: dict, league: str | None) -> bool:

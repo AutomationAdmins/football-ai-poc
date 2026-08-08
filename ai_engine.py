@@ -2,40 +2,15 @@ import json
 import os
 import re
 
-from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError
+import vertexai
+from vertexai.generative_models import GenerativeModel, GenerationConfig
 
-# Load environment variables from .env file
-load_dotenv()
+_PROJECT = os.environ.get("GCP_PROJECT", "avid-invention-484506-g9")
+_REGION = os.environ.get("GCP_REGION", "us-central1")
+_MODEL = os.environ.get("VERTEX_MODEL", "gemini-2.0-flash-001")
 
-
-class GroqRateLimitError(Exception):
-    """Raised when the Groq daily token quota is exhausted."""
-    def __init__(self, retry_after: str = "unknown"):
-        self.retry_after = retry_after
-        super().__init__(f"Groq rate limit reached. Retry in: {retry_after}")
-
-
-_client = None
-
-
-def _get_client():
-
-    global _client
-
-    if _client is None:
-
-        api_key = os.environ.get("GROQ_API_KEY")
-
-        if not api_key:
-            raise ValueError("GROQ_API_KEY not configured")
-
-        _client = OpenAI(
-            api_key=api_key,
-            base_url="https://api.groq.com/openai/v1"
-        )
-
-    return _client
+vertexai.init(project=_PROJECT, location=_REGION)
+_model = GenerativeModel(_MODEL)
 
 
 # ---------------------------------------------------------
@@ -105,36 +80,10 @@ def _is_grounded(text, allowed_facts):
     return nums.issubset(allowed_numbers)
 
 
-def _chat(prompt: str, max_tokens=800):
-
-    client = _get_client()
-
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            #model="llama-3.1-8b-instant",
-            temperature=0,
-            max_tokens=max_tokens,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
-        return response.choices[0].message.content
-
-    except RateLimitError as e:
-        # Parse retry time from Groq error message if present
-        retry_after = "unknown"
-        try:
-            msg = str(e)
-            match = re.search(r"Please try again in ([\d]+m[\d.]+s|[\d.]+s)", msg)
-            if match:
-                retry_after = match.group(1)
-        except Exception:
-            pass
-        raise GroqRateLimitError(retry_after=retry_after) from e
+def _chat(prompt: str, max_tokens: int = 800) -> str:
+    cfg = GenerationConfig(temperature=0, max_output_tokens=max_tokens)
+    response = _model.generate_content(prompt, generation_config=cfg)
+    return response.text
 
 
 # ---------------------------------------------------------

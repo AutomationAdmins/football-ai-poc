@@ -127,9 +127,10 @@ Editorial Context
     return prompt
 
 
-def build_insight_prompt(editorial_context: dict):
+def build_insight_prompt(editorial_context: dict, match_history: list[dict] | None = None):
     """
     Prompt for generating commentator-ready lead story and stat pack.
+    match_history is Layer 2 — in-match events before this one.
     """
 
     cleaned = _clean_context(editorial_context)
@@ -305,6 +306,10 @@ Example (with milestone, streak, and head-to-head all present)
 Context
 
 {json.dumps(cleaned, indent=2)}
+
+Match History (events in this match before the current event)
+
+{json.dumps(match_history or [], indent=2)}
 """
 
     return prompt

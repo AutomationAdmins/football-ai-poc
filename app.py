@@ -1,271 +1,120 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+import base64
+import json
+import os
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 
-from ai_engine import (
-    flatten_for_grounding,
-    generate_insights,
-    rank_events,
-    GroqRateLimitError,
-)
-
+from ai_engine import flatten_for_grounding, generate_insights, rank_events
 from event_processor import process_event
-
 from sports_data import get_context
-
 from editorial_context import build_editorial_context
-
-from prompt_builder import (
-    build_editorial_prompt,
-    build_insight_prompt,
+from prompt_builder import build_editorial_prompt, build_insight_prompt
+from firestore_client import (
+    append_match_event,
+    get_match_history,
+    write_insight,
+    get_all_pending_insights,
+    record_decision,
 )
+
+_FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
 
 app = FastAPI(title="Football AI Editorial Assistant")
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
-# In-memory store of the most recent processed events for the dashboard
-_last_result: dict = {}
-
-
-class EventInputPayload(BaseModel):
-    event: str
-    league: str | None = None
-    player: str | None = None
-    team: str | None = None
-    opponent: str | None = None
-    minutes: int | None = None
-    score: str | None = None
-
-
-class EventBatchPayload(BaseModel):
-    input_1: EventInputPayload
-    input_2: EventInputPayload
-
-
-def _process_input(payload: EventInputPayload, original_input_index: int) -> dict:
-
-    processed = process_event(payload.model_dump())
-
-    if processed["status"] == "ignored":
-        return {
-            "status": "ignored",
-            "original_input_index": original_input_index,
-            "event": processed,
-            "reason": processed["reason"],
-        }
-
-    stats_context = get_context(processed)
-
-    editorial_context = build_editorial_context(
-        processed,
-        stats_context,
-    )
-
-    return {
-        "status": "processed",
-        "original_input_index": original_input_index,
-        "event": processed,
-        "stats": stats_context,
-        "editorial_context": editorial_context,
-    }
 
 @app.get("/health")
 def health():
     return {"status": "healthy"}
 
 
-@app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, show_results: str = "0"):
-    global _last_result
-    if show_results != "1":
-        _last_result = {}
-    return templates.TemplateResponse("index.html", {"request": request, "result": _last_result})
+# ---------------------------------------------------------------------------
+# Pub/Sub push endpoint — Opta events arrive here from the topic
+# ---------------------------------------------------------------------------
 
-
-@app.get("/reset")
-def reset_dashboard():
-    global _last_result
-    _last_result = {}
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/")
-
-
-@app.get("/stats", response_class=HTMLResponse)
-def stats_dashboard(request: Request):
-    return templates.TemplateResponse("stats.html", {"request": request, "result": _last_result})
-
-
-@app.post("/event")
-def handle_event(payload: EventBatchPayload):
-
-    global _last_result
+@app.post("/pubsub/push")
+async def pubsub_push(request: Request):
+    envelope = await request.json()
+    message = envelope.get("message", {})
+    raw_data = message.get("data", "")
 
     try:
+        event_data = json.loads(base64.b64decode(raw_data).decode("utf-8"))
+    except Exception:
+        # Bad message — ack it so Pub/Sub doesn't retry garbage
+        return JSONResponse(status_code=200, content={"status": "malformed_message_acked"})
 
-        results = [
-            _process_input(payload.input_1, 0),
-            _process_input(payload.input_2, 1),
-        ]
+    fixture_id = event_data.pop("fixture_id", _FIXTURE_ID)
+    processed = process_event(event_data)
 
-        valid_events = [
-            r for r in results
-            if r["status"] == "processed"
-        ]
+    if processed["status"] == "ignored":
+        return JSONResponse(status_code=200, content={"status": "ignored", "reason": processed["reason"]})
 
-        #
-        # Nothing to compare
-        #
+    # Layer 3 — pre-match stats from GCS (via sports_data which calls gcs_client)
+    stats_context = get_context(processed)
 
-        if not valid_events:
+    # Layer 2 — current match history from Firestore
+    match_history = get_match_history(fixture_id)
 
-            _last_result = {
-                "results": results,
-                "ranked_results": [],
-                "lead_story": None,
-            }
+    # Build editorial context and prompt
+    editorial_ctx = build_editorial_context(processed, stats_context)
+    prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
+    allowed_facts = flatten_for_grounding(editorial_ctx)
 
-            return {
-                "status": "processed",
-                "results": results,
-                "ranked_results": [],
-                "lead_story": None,
-            }
+    insight_result = generate_insights(prompt, allowed_facts)
 
-        #
-        # Editorial Ranking
-        #
+    # Persist event to match log (becomes Layer 2 for the next event)
+    append_match_event(fixture_id, processed)
 
-        ranking_prompt = build_editorial_prompt(
-            [
-                e["editorial_context"]
-                for e in valid_events
-            ]
-        )
+    # Persist AI insight to Firestore (dashboard reads from here)
+    insight_id = write_insight(fixture_id, {
+        "lead_story": insight_result["lead_story"],
+        "insights": insight_result["insights"],
+        "event_type": processed.get("event_type"),
+        "player": processed.get("player"),
+        "team": processed.get("team"),
+        "minute": processed.get("minute"),
+        "score": processed.get("score"),
+    })
 
-        ranking = rank_events(ranking_prompt)
-
-        print("\n========== AI RANKING ==========")
-        print(ranking)
-        print("===============================\n")
-
-        for rank_order, item in enumerate(ranking["ranking"], start=1):
-
-            idx = item["event_index"]
-
-            valid_events[idx]["priority"] = item["priority"]
-
-            valid_events[idx]["editorial_reason"] = item["reason"]
-
-            valid_events[idx]["confidence"] = item.get("confidence")
-
-            valid_events[idx]["rank_order"] = rank_order
-
-        #
-        # Highest first
-        #
-
-        ranked_results = sorted(
-            valid_events,
-            key=lambda x: (
-                {
-                    "Critical": 4,
-                    "High": 3,
-                    "Medium": 2,
-                    "Low": 1,
-                }.get(
-                    x.get("priority"),
-                    0,
-                )
-            ),
-            reverse=True,
-        )
-
-        #
-        # Generate Insights (In Parallel)
-        #
-        import concurrent.futures
-        
-        def _fetch_insight_for_event(event):
-            prompt = build_insight_prompt(event["editorial_context"])
-            allowed = flatten_for_grounding(event["editorial_context"])
-            return event, generate_insights(prompt, allowed)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(ranked_results) if ranked_results else 1) as executor:
-            future_to_event = [executor.submit(_fetch_insight_for_event, e) for e in ranked_results]
-            for future in concurrent.futures.as_completed(future_to_event):
-                event, insight_result = future.result()
-                event["lead_story_line"] = {
-                    "text": insight_result["lead_story"],
-                }
-                event["insights"] = [
-                    {
-                        "category": x["category"],
-                        "text": x["line"],
-                        "facts_used": x.get("facts_used", []),
-                        "decision": None,
-                    }
-                    for x in insight_result["insights"]
-                ]
-
-        _last_result = {
-            "results": results,
-            "ranked_results": ranked_results,
-            "lead_story": ranked_results[0] if ranked_results else None,
-        }
-
-        return {
-            "status": "processed",
-            "results": results,
-            "ranked_results": ranked_results,
-            "lead_story": ranked_results[0] if ranked_results else None,
-        }
-
-    except GroqRateLimitError as e:
-
-        _last_result = {
-            "results": [],
-            "ranked_results": [],
-            "lead_story": None,
-            "rate_limit_error": {
-                "message": "Groq daily token quota exhausted. Please wait and try again.",
-                "retry_after": e.retry_after,
-            },
-        }
-
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": "rate_limit_exceeded",
-                "message": f"Groq daily token quota exhausted. Retry in: {e.retry_after}",
-                "retry_after": e.retry_after,
-            },
-        )
-
-@app.post("/approve/{event_index}/{insight_index}")
-def approve_insight(event_index: int, insight_index: int):
-    results = _last_result.get("results", [])
-    if event_index >= len(results):
-        return {"error": "Invalid event index"}
-
-    insights = results[event_index].get("insights", [])
-    if insight_index >= len(insights):
-        return {"error": "Invalid index"}
-    insights[insight_index]["decision"] = "approved"
-    return {"status": "approved", "event_index": event_index, "insight_index": insight_index}
+    return JSONResponse(status_code=200, content={"status": "processed", "insight_id": insight_id})
 
 
-@app.post("/reject/{event_index}/{insight_index}")
-def reject_insight(event_index: int, insight_index: int):
-    results = _last_result.get("results", [])
-    if event_index >= len(results):
-        return {"error": "Invalid event index"}
+# ---------------------------------------------------------------------------
+# Dashboard — reads live insights from Firestore
+# ---------------------------------------------------------------------------
 
-    insights = results[event_index].get("insights", [])
-    if insight_index >= len(insights):
-        return {"error": "Invalid index"}
-    insights[insight_index]["decision"] = "rejected"
-    return {"status": "rejected", "event_index": event_index, "insight_index": insight_index}
+@app.get("/", response_class=HTMLResponse)
+def dashboard(request: Request):
+    insights = get_all_pending_insights()
+    return templates.TemplateResponse("index.html", {"request": request, "insights": insights})
+
+
+@app.get("/api/insights")
+def api_insights():
+    """JSON endpoint for the Next.js frontend to poll."""
+    return get_all_pending_insights()
+
+
+# ---------------------------------------------------------------------------
+# Statistician decisions — approve / reject
+# ---------------------------------------------------------------------------
+
+@app.post("/decide/{fixture_id}/{insight_id}")
+def decide(fixture_id: str, insight_id: str, request: Request):
+    return JSONResponse(status_code=200, content={"status": "use_approve_or_reject"})
+
+
+@app.post("/approve/{fixture_id}/{insight_id}")
+def approve(fixture_id: str, insight_id: str):
+    record_decision(fixture_id, insight_id, approved=True)
+    return {"status": "approved", "fixture_id": fixture_id, "insight_id": insight_id}
+
+
+@app.post("/reject/{fixture_id}/{insight_id}")
+def reject(fixture_id: str, insight_id: str):
+    record_decision(fixture_id, insight_id, approved=False)
+    return {"status": "rejected", "fixture_id": fixture_id, "insight_id": insight_id}
