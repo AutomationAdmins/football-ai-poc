@@ -2,15 +2,13 @@ import json
 import os
 import re
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+import google.generativeai as genai
 
-_PROJECT = os.environ.get("GCP_PROJECT", "avid-invention-484506-g9")
-_REGION = os.environ.get("GCP_REGION", "us-central1")
-_MODEL = os.environ.get("VERTEX_MODEL", "gemini-1.5-flash-002")
+_API_KEY = os.environ.get("GEMINI_API_KEY")
+_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
 
-vertexai.init(project=_PROJECT, location=_REGION)
-_model = GenerativeModel(_MODEL)
+genai.configure(api_key=_API_KEY)
+_model = genai.GenerativeModel(_MODEL)
 
 
 # ---------------------------------------------------------
@@ -81,8 +79,10 @@ def _is_grounded(text, allowed_facts):
 
 
 def _chat(prompt: str, max_tokens: int = 800) -> str:
-    cfg = GenerationConfig(temperature=0, max_output_tokens=max_tokens)
-    response = _model.generate_content(prompt, generation_config=cfg)
+    response = _model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(temperature=0, max_output_tokens=max_tokens),
+    )
     return response.text
 
 
