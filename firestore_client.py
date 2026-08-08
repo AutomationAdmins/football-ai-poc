@@ -63,12 +63,37 @@ def get_pending_insights(fixture_id: str) -> list[dict]:
 
 def get_all_pending_insights() -> list[dict]:
     """Return pending insights across all fixtures for the dashboard."""
-    docs = (
-        _get_db().collection_group("items")
-        .where("status", "==", "pending")
-        .stream()
-    )
-    return [{"id": doc.id, "fixture_id": doc.reference.parent.parent.id, **doc.to_dict()} for doc in docs]
+    db = _get_db()
+
+    # Prefer collection group query (faster) when the index exists.
+    try:
+        docs = (
+            db.collection_group("items")
+            .where("status", "==", "pending")
+            .stream()
+        )
+        return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+    except Exception:
+        # Fallback path for projects that do not yet have the required
+        # collection-group index.
+        results: list[dict] = []
+        fixture_docs = db.collection("insights").stream()
+        for fixture_doc in fixture_docs:
+            item_docs = (
+                db.collection("insights")
+                .document(fixture_doc.id)
+                .collection("items")
+                .where("status", "==", "pending")
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .stream()
+            )
+            for doc in item_docs:
+                payload = doc.to_dict()
+                if "fixture_id" not in payload:
+                    payload["fixture_id"] = fixture_doc.id
+                results.append({"id": doc.id, **payload})
+
+        return results
 
 
 # ---------------------------------------------------------------------------
