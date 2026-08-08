@@ -7,7 +7,7 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 
 _PROJECT = os.environ.get("GCP_PROJECT", "avid-invention-484506-g9")
 _REGION = os.environ.get("GCP_REGION", "us-central1")
-_MODEL = os.environ.get("VERTEX_MODEL", "gemini-2.0-flash-001")
+_MODEL = os.environ.get("VERTEX_MODEL", "gemini-1.5-flash-002")
 
 vertexai.init(project=_PROJECT, location=_REGION)
 _model = GenerativeModel(_MODEL)
