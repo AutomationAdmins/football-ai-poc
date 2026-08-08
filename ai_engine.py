@@ -2,13 +2,10 @@ import json
 import os
 import re
 
-import google.generativeai as genai
+import requests
 
 _API_KEY = os.environ.get("GEMINI_API_KEY")
 _MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-
-genai.configure(api_key=_API_KEY)
-_model = genai.GenerativeModel(_MODEL)
 
 
 # ---------------------------------------------------------
@@ -79,11 +76,17 @@ def _is_grounded(text, allowed_facts):
 
 
 def _chat(prompt: str, max_tokens: int = 800) -> str:
-    response = _model.generate_content(
-        prompt,
-        generation_config=genai.types.GenerationConfig(temperature=0, max_output_tokens=max_tokens),
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{_MODEL}:generateContent?key={_API_KEY}"
     )
-    return response.text
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens},
+    }
+    resp = requests.post(url, json=body, timeout=60)
+    resp.raise_for_status()
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
 # ---------------------------------------------------------
