@@ -64,7 +64,7 @@ async def pubsub_push(request: Request):
     prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
     allowed_facts = flatten_for_grounding(editorial_ctx)
 
-    insight_result = generate_insights(prompt, allowed_facts)
+    insight_result = generate_insights(prompt, allowed_facts, editorial_ctx)
 
     # Persist event to match log (becomes Layer 2 for the next event)
     append_match_event(fixture_id, processed)

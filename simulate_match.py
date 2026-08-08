@@ -10,11 +10,9 @@ in Firestore / the dashboard in real time.
 """
 
 import argparse
-import base64
 import json
+import subprocess
 import time
-
-from google.cloud import pubsub_v1
 
 _PROJECT = "avid-invention-484506-g9"
 _TOPIC = "opta-live-events"
@@ -95,12 +93,27 @@ MATCH_EVENTS = [
 ]
 
 
-def publish_event(publisher, topic_path: str, fixture_id: str, event: dict) -> None:
+def publish_event(fixture_id: str, event: dict) -> None:
     payload = {**event, "fixture_id": fixture_id}
-    data = json.dumps(payload).encode("utf-8")
-    future = publisher.publish(topic_path, data)
-    msg_id = future.result()
-    print(f"  Published [{event['event']}] at {event.get('minutes', '?')}' — msg_id={msg_id}")
+    message = json.dumps(payload, separators=(",", ":"))
+    result = subprocess.run(
+        [
+            "gcloud",
+            "pubsub",
+            "topics",
+            "publish",
+            _TOPIC,
+            "--message",
+            message,
+            "--project",
+            _PROJECT,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    output = result.stdout.strip() or result.stderr.strip()
+    print(f"  Published [{event['event']}] at {event.get('minutes', '?')}' — {output}")
 
 
 def main() -> None:
@@ -109,15 +122,12 @@ def main() -> None:
     parser.add_argument("--delay", type=float, default=3.0, help="Seconds between events")
     args = parser.parse_args()
 
-    publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path(_PROJECT, _TOPIC)
-
     print(f"Simulating match: {args.fixture_id}")
-    print(f"Publishing {len(MATCH_EVENTS)} events to {topic_path}\n")
+    print(f"Publishing {len(MATCH_EVENTS)} events to projects/{_PROJECT}/topics/{_TOPIC}\n")
 
     for i, event in enumerate(MATCH_EVENTS, start=1):
         print(f"[{i}/{len(MATCH_EVENTS)}] ", end="")
-        publish_event(publisher, topic_path, args.fixture_id, event)
+        publish_event(args.fixture_id, event)
         if i < len(MATCH_EVENTS):
             time.sleep(args.delay)
 
