@@ -17,6 +17,8 @@ type InsightItem = {
   team?: string;
   minute?: number;
   score?: string;
+  editorial_weight?: number;
+  league?: string;
 };
 
 // Map team names to exact logo filenames in /public/logos/
@@ -65,7 +67,11 @@ function formatEventType(value?: string) {
 
 /**
  * Pick the single most important lead story across all matches.
- * Priority: GOAL with hat-trick > GOAL with equaliser > RED_CARD > any GOAL > other
+ * Uses backend editorial_weight as the primary signal (computed from league stakes,
+ * event context, player performance). Falls back to heuristic scoring.
+ * 
+ * Production requirement: "A Man Utd goal is generally more important than a Salford goal,
+ * but if Salford equalise to go top of the league, the Salford goal is more relevant."
  */
 function pickLeadStory(insights: InsightItem[]): InsightItem | null {
   if (insights.length === 0) return null;
@@ -73,22 +79,21 @@ function pickLeadStory(insights: InsightItem[]): InsightItem | null {
   const scored = insights
     .filter(i => i.lead_story)
     .map(i => {
-      let weight = 0;
-      const lead = (i.lead_story ?? '').toLowerCase();
-      const eventType = (i.event_type ?? '').toUpperCase();
+      // Backend editorial_weight is the primary ranking signal
+      let weight = i.editorial_weight ?? 0;
 
-      // Hat-trick is the biggest story
-      if (lead.includes('hat-trick') || lead.includes('hat trick')) weight += 100;
-      // Equaliser or comeback
-      if (lead.includes('equalis') || lead.includes('pulls one back')) weight += 60;
-      // Red card drama
-      if (eventType === 'RED_CARD') weight += 50;
-      // Any goal
-      if (eventType === 'GOAL') weight += 30;
-      // League impact language
-      if (lead.includes('promotion') || lead.includes('title') || lead.includes('relegation') || lead.includes('champions league')) weight += 40;
-      // More recent = slight preference
-      weight += (i.minute ?? 0) * 0.1;
+      // If no backend weight, fall back to heuristic
+      if (!weight) {
+        const lead = (i.lead_story ?? '').toLowerCase();
+        const eventType = (i.event_type ?? '').toUpperCase();
+
+        if (lead.includes('hat-trick') || lead.includes('hat trick')) weight += 100;
+        if (lead.includes('equalis') || lead.includes('pulls one back')) weight += 60;
+        if (eventType === 'RED_CARD') weight += 50;
+        if (eventType === 'GOAL') weight += 30;
+        if (lead.includes('promotion') || lead.includes('promoted') || lead.includes('title') || lead.includes('relegation') || lead.includes('champions league')) weight += 80;
+        weight += (i.minute ?? 0) * 0.1;
+      }
 
       return { item: i, weight };
     })
@@ -125,7 +130,7 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
   }
 
   useEffect(() => {
-    const interval = setInterval(() => refreshInsights(), 5000);
+    const interval = setInterval(() => refreshInsights(), 500);
     return () => clearInterval(interval);
   }, []);
 

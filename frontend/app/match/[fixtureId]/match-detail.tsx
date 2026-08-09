@@ -83,7 +83,7 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
   }
 
   useEffect(() => {
-    const interval = setInterval(() => refreshInsights(), 5000);
+    const interval = setInterval(() => refreshInsights(), 500);
     return () => clearInterval(interval);
   }, []);
 

@@ -1,6 +1,10 @@
 import base64
 import json
+import logging
 import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -99,7 +103,108 @@ def _ensure_player_stat_insight(insights: list[dict], editorial_ctx: dict, proce
     return insights + [{"category": "player_stat", "line": line, "facts_used": []}]
 
 
-def _build_match_summary_insights(match_stats: dict, event_type: str) -> list[dict]:
+def _compute_editorial_weight(event: dict, editorial_ctx: dict, match_state: dict = None) -> int:
+    """
+    Compute editorial importance weight for an event.
+    Higher = more important to show as lead story.
+    
+    Weighting philosophy (from production requirements):
+    - A Man Utd goal is generally more important than a Salford goal
+    - BUT if Salford equalise to go top of the league, that's more relevant
+    - Context is everything: promotion, relegation, title race, hat-tricks
+    """
+    weight = 0
+    event_type = (event.get("event_type") or "").upper()
+    lead = (editorial_ctx.get("commentator_facts", {}) if isinstance(editorial_ctx, dict) else {})
+    league = event.get("league") or editorial_ctx.get("event", {}).get("league") or ""
+    
+    # --- LEAGUE TIER BASE WEIGHT ---
+    # Premier League gets a base boost, but context can override
+    league_lower = league.lower() if league else ""
+    if "premier league" in league_lower:
+        weight += 20
+    elif "championship" in league_lower:
+        weight += 10
+    elif "league one" in league_lower or "league two" in league_lower:
+        weight += 5
+    
+    # --- STAKES MULTIPLIER (this is the big one) ---
+    # Promotion/relegation/title-deciding moments override league tier
+    stakes_text = ""
+    if isinstance(lead, dict):
+        for key in ("promotion_stakes", "stakes_line", "promotion_consequence", 
+                    "champions_league_stakes", "title_race"):
+            val = lead.get(key, "")
+            if val:
+                stakes_text += " " + str(val)
+    
+    stakes_lower = stakes_text.lower()
+    if "promoted" in stakes_lower or "promotion" in stakes_lower:
+        weight += 80
+    if "relegated" in stakes_lower or "relegation" in stakes_lower:
+        weight += 70
+    if "title" in stakes_lower or "champions league" in stakes_lower:
+        weight += 60
+    if "top of the league" in stakes_lower or "go top" in stakes_lower:
+        weight += 50
+    
+    # --- EVENT TYPE ---
+    if event_type == "FULL_TIME":
+        weight += 50  # Final result is always the definitive lead story
+    elif event_type == "HALF_TIME":
+        weight += 10
+    elif event_type == "RED_CARD":
+        weight += 40
+    elif event_type == "GOAL":
+        weight += 30
+    elif event_type == "PENALTY":
+        weight += 35
+    
+    # --- GOAL CONTEXT ---
+    score = event.get("score", "")
+    if score and event_type == "GOAL":
+        parts = score.split("-")
+        if len(parts) == 2:
+            try:
+                h, a = int(parts[0]), int(parts[1])
+                if h == a:
+                    weight += 25  # Equaliser
+                elif h + a == 1:
+                    weight += 15  # Opening goal
+                elif abs(h - a) == 1 and (h + a) > 2:
+                    weight += 20  # Going ahead in a tight game
+            except ValueError:
+                pass
+    
+    # --- PLAYER PERFORMANCE ---
+    if match_state:
+        player = event.get("player", "")
+        if player:
+            player_goals = match_state.get("goals_by_player", {}).get(player, 0)
+            if player_goals >= 3:
+                weight += 100  # Hat-trick is always the biggest story
+            elif player_goals == 2:
+                weight += 40  # Brace
+        else:
+            # For FULL_TIME/HALF_TIME, check if any player has a hat-trick
+            goals_by_player = match_state.get("goals_by_player", {})
+            max_goals = max(goals_by_player.values()) if goals_by_player else 0
+            if max_goals >= 3:
+                weight += 100
+            elif max_goals == 2:
+                weight += 40
+    
+    # --- MINUTE (late drama is more dramatic) ---
+    minute = event.get("minute") or 0
+    if minute >= 85:
+        weight += 20  # Late drama
+    elif minute >= 75:
+        weight += 10
+    
+    return weight
+
+
+def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_ctx: dict = None) -> list[dict]:
     """
     Build broadcaster-friendly match summary insights for HALF_TIME and FULL_TIME.
     Written in natural language so commentators can read them out directly.
@@ -117,6 +222,7 @@ def _build_match_summary_insights(match_stats: dict, event_type: str) -> list[di
     away_goals = match_stats.get("goals_by_team", {}).get(away_team, 0)
     goals_by_player = match_stats.get("goals_by_player", {})
     total_goals = match_stats.get("total_goals", 0)
+    is_full_time = event_type == "FULL_TIME"
     
     # --- LEAD STORY: Narrative headline ---
     lead_parts = []
@@ -124,25 +230,44 @@ def _build_match_summary_insights(match_stats: dict, event_type: str) -> list[di
     # Who's winning and how?
     if home_goals > away_goals:
         margin = home_goals - away_goals
-        if margin >= 3:
-            lead_parts.append(f"{home_team} are dominant, leading {score} against {away_team}")
-        elif margin == 2:
-            lead_parts.append(f"{home_team} in control, leading {score} against {away_team}")
+        if is_full_time:
+            if margin >= 3:
+                lead_parts.append(f"{home_team} thrash {away_team} {score}")
+            elif margin == 2:
+                lead_parts.append(f"{home_team} beat {away_team} {score}")
+            else:
+                lead_parts.append(f"{home_team} win {score} against {away_team}")
         else:
-            lead_parts.append(f"{home_team} lead {score} against {away_team}")
+            if margin >= 3:
+                lead_parts.append(f"{home_team} are dominant, leading {score} against {away_team}")
+            elif margin == 2:
+                lead_parts.append(f"{home_team} in control, leading {score} against {away_team}")
+            else:
+                lead_parts.append(f"{home_team} lead {score} against {away_team}")
     elif away_goals > home_goals:
         margin = away_goals - home_goals
-        if margin >= 3:
-            lead_parts.append(f"{away_team} are dominant, leading {score} against {home_team}")
-        elif margin == 2:
-            lead_parts.append(f"{away_team} in control, {score} at {home_team}")
+        if is_full_time:
+            if margin >= 3:
+                lead_parts.append(f"{away_team} thrash {home_team} {score}")
+            elif margin == 2:
+                lead_parts.append(f"{away_team} beat {home_team} {score}")
+            else:
+                lead_parts.append(f"{away_team} win {score} at {home_team}")
         else:
-            lead_parts.append(f"{away_team} lead {score} at {home_team}")
+            if margin >= 3:
+                lead_parts.append(f"{away_team} are dominant, leading {score} against {home_team}")
+            elif margin == 2:
+                lead_parts.append(f"{away_team} in control, {score} at {home_team}")
+            else:
+                lead_parts.append(f"{away_team} lead {score} at {home_team}")
     else:
         if total_goals == 0:
             lead_parts.append(f"Nothing to separate {home_team} and {away_team}, goalless at {period.lower()}")
         else:
-            lead_parts.append(f"All square at {score} between {home_team} and {away_team}")
+            if is_full_time:
+                lead_parts.append(f"{home_team} and {away_team} share the points in a {score} draw")
+            else:
+                lead_parts.append(f"All square at {score} between {home_team} and {away_team}")
     
     # Add star performer to lead
     top_scorer = max(goals_by_player.items(), key=lambda x: x[1]) if goals_by_player else None
@@ -157,6 +282,57 @@ def _build_match_summary_insights(match_stats: dict, event_type: str) -> list[di
     if match_stats.get("red_cards"):
         red = match_stats["red_cards"][0]
         lead_parts.append(f"{red['team']} down to ten men after {red['player']}'s red card")
+    
+    # League stakes — the MOST IMPORTANT context for full-time
+    if is_full_time and editorial_ctx:
+        facts = editorial_ctx.get("commentator_facts", {})
+        # Check for promotion/relegation/title consequence
+        promotion_consequence = facts.get("promotion_consequence") or ""
+        stakes = facts.get("stakes_line") or ""
+        promotion_stakes = facts.get("promotion_stakes") or ""
+        
+        # Determine what happened based on result
+        winner = None
+        if home_goals > away_goals:
+            winner = home_team
+        elif away_goals > home_goals:
+            winner = away_team
+        
+        # Build the consequence line
+        consequence = ""
+        if promotion_consequence and winner:
+            # Convert conditional "If X win today they will..." to definitive "X will..."
+            con = promotion_consequence
+            # Remove conditional prefixes
+            for prefix in (
+                f"If {home_team} win today ",
+                f"If {away_team} win today ",
+                f"If {winner} win today ",
+                "If they win today ",
+                "If Leeds win today ",
+            ):
+                if con.startswith(prefix):
+                    con = con[len(prefix):]
+                    break
+            # Remove leading "they " since we'll add the team name
+            if con.startswith("they "):
+                con = con[5:]
+            elif con.startswith("They "):
+                con = con[5:]
+            # Make definitive with team name
+            consequence = f"{winner} {con}" if con else ""
+        elif promotion_stakes:
+            # Also convert conditional stakes to definitive
+            ps = promotion_stakes
+            if winner and "win or draw" in ps.lower():
+                # e.g. "A win or draw confirms..." → confirmed
+                ps = ps.replace("A win or draw confirms", f"{winner} have confirmed").replace("a win or draw confirms", f"{winner} have confirmed")
+            consequence = ps
+        elif stakes and ("promot" in stakes.lower() or "relegat" in stakes.lower() or "title" in stakes.lower()):
+            consequence = stakes
+        
+        if consequence:
+            lead_parts.append(consequence)
     
     lead_story = " — ".join(lead_parts)
     
@@ -324,8 +500,10 @@ def _build_match_summary_insights(match_stats: dict, event_type: str) -> list[di
 
 def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, editorial_ctx):
     try:
+        logger.info(f"Generating AI insight for {fixture_id} | {processed.get('event_type')} at {processed.get('minute')}'")
         insight_result = generate_insights(prompt, allowed_facts, editorial_ctx)
         
+        match_state = editorial_ctx.get("match_state")
         # Filter out duplicate insights
         used_lines = editorial_ctx.get("used_insights", [])
         filtered_insights = filter_duplicate_insights(
@@ -338,6 +516,7 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
         
         # Only write if we have novel insights
         if filtered_insights:
+            weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
             write_insight(fixture_id, {
                 "lead_story": insight_result["lead_story"],
                 "insights": filtered_insights,
@@ -346,11 +525,15 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
                 "team": processed.get("team"),
                 "minute": processed.get("minute"),
                 "score": processed.get("score"),
+                "editorial_weight": weight,
+                "league": processed.get("league"),
             })
         else:
             print(f"All insights for {fixture_id} were duplicates - skipped writing")
     except Exception as e:
-        print(f"Error generating insight in background: {e}")
+        import traceback
+        logger.error(f"Error generating insight for {fixture_id}: {e}")
+        traceback.print_exc()
 
 @app.post("/pubsub/push")
 async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
@@ -405,7 +588,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         match_stats = build_match_statistics(match_history, processed)
         
         # Generate statistical insights
-        stat_insights = _build_match_summary_insights(match_stats, event_type)
+        stat_insights = _build_match_summary_insights(match_stats, event_type, editorial_ctx)
         
         # For HALF_TIME and FULL_TIME, only filter duplicates within the current insights
         # Don't filter against historical insights since these are summary moments
@@ -415,6 +598,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         if filtered_insights:
             # Use the narrative lead story from the first insight
             narrative_lead = filtered_insights[0].get("line", f"{match_stats.get('home_team', 'Home')} {match_stats.get('score', '0-0')} {match_stats.get('away_team', 'Away')}")
+            weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
             write_insight(fixture_id, {
                 "lead_story": narrative_lead,
                 "insights": filtered_insights,
@@ -423,6 +607,8 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
                 "team": processed.get("team"),
                 "minute": processed.get("minute"),
                 "score": processed.get("score"),
+                "editorial_weight": weight,
+                "league": processed.get("league"),
             })
         
         return JSONResponse(status_code=200, content={"status": "stats_generated"})
