@@ -13,7 +13,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --service-account "${SERVICE_ACCOUNT}" \
   --allow-unauthenticated \
   --set-env-vars "GCP_PROJECT=${GCP_PROJECT}" \
-  --set-secrets "GROQ_API_KEY=GROQ_API_KEY:latest" \
+  --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest" \
   --memory=512Mi \
   --timeout=60
 

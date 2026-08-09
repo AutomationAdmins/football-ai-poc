@@ -143,7 +143,7 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
           </div>
         </div>
         <div className="hero__row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ margin: 0 }}>Soccer Saturday</h1>
+          <h1 style={{ margin: 0 }}>Soccer Saturday Intelligent Insight Generator</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: '999px', cursor: 'pointer' }} onClick={refreshInsights}>
             <div className={isRefreshing ? 'dot-blinking' : ''} style={{ width: '10px', height: '10px', backgroundColor: '#ef4444', borderRadius: '50%', boxShadow: '0 0 8px #ef4444' }} />
             <span style={{ color: 'white', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.5px' }}>LIVE</span>
