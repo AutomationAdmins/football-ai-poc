@@ -2,17 +2,18 @@ import json
 import os
 import re
 
-from openai import OpenAI
+import google.generativeai as genai
 
-_API_KEY = os.environ.get("GROQ_API_KEY")
-_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+_GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 _client = None
 
 
-def _get_client():
+def _get_model():
     global _client
     if _client is None:
-        _client = OpenAI(api_key=_API_KEY, base_url="https://api.groq.com/openai/v1")
+        genai.configure(api_key=_GEMINI_KEY)
+        _client = genai.GenerativeModel(_MODEL)
     return _client
 
 
@@ -84,13 +85,15 @@ def _is_grounded(text, allowed_facts):
 
 
 def _chat(prompt: str, max_tokens: int = 800) -> str:
-    response = _get_client().chat.completions.create(
-        model=_MODEL,
-        temperature=0,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
+    model = _get_model()
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
+            temperature=0,
+            max_output_tokens=max_tokens,
+        ),
     )
-    return response.choices[0].message.content
+    return response.text
 
 
 def _fallback_lead_story(editorial_context: dict) -> str:
