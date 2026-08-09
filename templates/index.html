@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Soccer Saturday - Live Insights Dashboard</title>
-    <meta http-equiv="refresh" content="10">
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
         .insight-card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px; margin-bottom:20px; }
@@ -40,27 +39,45 @@
 
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
         <div class="section-header" style="margin:0">AI-GENERATED INSIGHTS — STATISTICIAN REVIEW</div>
-        <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
+        <div style="display:flex; gap:10px;">
+            <button class="refresh-btn" style="background:#da3633;" onclick="clearDashboard(this)">🗑 Clear All</button>
+            <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
+        </div>
     </div>
 
     {% if insights %}
-        {% for insight in insights %}
-        <div class="insight-card">
-            <div class="fixture-label">{{ insight.fixture_id }} · {{ insight.event_type | default('EVENT') | replace('_',' ') }} · {{ insight.minute }}'  {{ insight.score }}</div>
-            {% if insight.player %}<div class="event-meta">👤 {{ insight.player }} — {{ insight.team }}</div>{% endif %}
-            <div class="lead-line">{{ insight.lead_story }}</div>
-            {% for item in insight.insights %}
-            <div class="insight-row">
-                <span class="category-badge">{{ item.category | replace('_',' ') }}</span>
-                <span class="insight-line">{{ item.line }}</span>
+        <div class="fixtures-grid" style="display: flex; gap: 30px; align-items: flex-start; overflow-x: auto; padding-bottom: 30px; width: 100%;">
+        {% for fixture_group in insights|groupby('fixture_id') %}
+            <div class="fixture-column" style="flex: 1; min-width: 500px; display: flex; flex-direction: column; gap: 20px;">
+                <div style="background: linear-gradient(135deg, #0B2D8C 0%, #072C91 100%); color: white; padding: 16px 20px; border-radius: 10px; font-weight: bold; text-transform: uppercase; font-size: 1.1em; box-shadow: 0 4px 12px rgba(11, 45, 140, 0.2); border-left: 4px solid #E30613; display: flex; justify-content: space-between; align-items: center;">
+                    <span>{{ fixture_group.grouper | replace('-',' ') | title | replace(' 2025 08 02','') | replace(' 2026 08 02','') }}</span>
+                    <span class="live-indicator" style="font-size: 0.7em; padding: 4px 8px; margin: 0;"><span class="live-dot"></span>LIVE</span>
+                </div>
+                {% for insight in fixture_group.list %}
+                <div class="insight-card" style="margin-bottom: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    <div class="fixture-label" style="font-size: 0.9em; color: #1f6feb; font-weight: bold; margin-bottom: 12px;">{{ insight.event_type | default('EVENT') | replace('_',' ') }} · {{ insight.minute }}'  {{ insight.score }}</div>
+                    {% if insight.player %}<div class="event-meta" style="margin-bottom: 12px; font-weight: 500; color: #8b949e; font-size: 0.9em;">👤 {{ insight.player }} <span style="margin: 0 8px;">|</span> 👕 {{ insight.team }}</div>{% endif %}
+                    
+                    <div class="lead-line" style="font-size: 1.15em; line-height: 1.5; border-left: 3px solid #1f6feb; padding-left: 14px; margin-bottom: 20px;">{{ insight.lead_story }}</div>
+                    
+                    <div style="background: #0d1117; border-radius: 8px; padding: 8px 16px;">
+                        {% for item in insight.insights %}
+                        <div class="insight-row" style="padding: 12px 0; border-bottom: 1px dashed #30363d;">
+                            <span class="category-badge" style="min-width: 110px; text-align: center; background: #21262d; border: 1px solid #30363d; font-size: 0.75em;">{{ item.category | replace('_',' ') }}</span>
+                            <span class="insight-line" style="line-height: 1.5; color: #c9d1d9;">{{ item.line }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div style="margin-top: 20px; display:flex; gap:12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #21262d;">
+                        <button class="btn-ap" style="padding: 8px 18px; font-weight: bold; transition: all 0.2s;" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','approve',this)">✓ APPROVE</button>
+                        <button class="btn-rj" style="padding: 8px 18px; font-weight: bold; transition: all 0.2s;" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','reject',this)">✗ REJECT</button>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-            <div style="margin-top:14px; display:flex; gap:10px;">
-                <button class="btn-ap" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','approve',this)">✓ Approve</button>
-                <button class="btn-rj" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','reject',this)">✗ Reject</button>
-            </div>
-        </div>
         {% endfor %}
+        </div>
     {% else %}
         <div class="empty-state">No pending insights. Run the simulation to generate live events.</div>
     {% endif %}
@@ -78,6 +95,27 @@ async function decide(fixtureId, insightId, action, btn) {
     await fetch(endpoint, { method: 'POST' });
     btn.parentElement.innerHTML = `<span style="color:${action==='approve'?'#3fb950':'#f85149'};font-weight:bold">${action.toUpperCase()}D</span>`;
 }
+
+async function clearDashboard(btn) {
+    if (!confirm('This will archive all insights for training and clear the dashboard. Continue?')) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Archiving...';
+    try {
+        const res = await fetch('/api/clear', { method: 'POST' });
+        if (!res.ok) throw new Error('Clear failed');
+        await res.json();
+        btn.textContent = '✓ Cleared';
+        btn.style.background = '#238636';
+        setTimeout(() => location.reload(), 500);
+    } catch (e) {
+        btn.textContent = '✗ Failed';
+        btn.disabled = false;
+        alert('Clear failed: ' + e.message);
+    }
+}
+
+// Auto-refresh every 10 seconds
+setInterval(() => location.reload(), 10000);
 </script>
 </body>
 </html>

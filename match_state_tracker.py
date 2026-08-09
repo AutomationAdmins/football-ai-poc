@@ -93,11 +93,11 @@ def detect_player_performance(player_name: str, match_state: dict, event: dict) 
         "is_brace": goals_today == 2,
         "is_first_goal": goals_today == 1,
         "match_winner": False,  # Set by caller based on score
-        "xG_for_this_goal": event.get("xG", 0.0),
+        "xG_for_this_goal": event.get("xG") or 0.0,
     }
 
     # Check if this was a high-quality chance converted
-    xg = event.get("xG", 0.0)
+    xg = event.get("xG") or 0.0
     if xg > 0.5:
         performance["high_quality_chance"] = True
     elif xg < 0.1:
@@ -201,6 +201,109 @@ def _has_significant_overlap(line1: str, line2: str) -> bool:
     min_length = min(len(words1), len(words2))
 
     return overlap / min_length > 0.7 if min_length > 0 else False
+
+
+def build_match_statistics(match_history: list[dict], current_event: dict) -> dict:
+    """
+    Build comprehensive match statistics for HALF_TIME and FULL_TIME events.
+    Aggregates all stats from the match history up to the current moment.
+    """
+    stats = {
+        "goals_by_team": {},
+        "goals_by_player": {},
+        "scorers": [],  # List of goal scorers with details
+        "xG_by_team": {},
+        "avg_pass_accuracy_by_team": {},
+        "avg_pressure_index_by_team": {},
+        "red_cards": [],
+        "var_decisions_count": 0,
+        "total_goals": 0,
+        "score": current_event.get("score", "0-0"),
+        "minute": current_event.get("minute", 0),
+    }
+    
+    current_minute = current_event.get("minute", 0)
+    home_team = None
+    away_team = None
+    
+    # Track pass accuracy and pressure for averaging
+    pass_accuracy_data = defaultdict(list)
+    pressure_data = defaultdict(list)
+    
+    # Process only events UP TO (not including) the current event's minute
+    # This ensures HALF_TIME shows only first-half stats, FULL_TIME shows all stats
+    for event in match_history:
+        event_minute = event.get("minute", 0)
+        # Only include events that happened before or at the current moment
+        if event_minute > current_minute:
+            continue
+            
+        event_type = event.get("event_type", "").upper()
+        player = event.get("player")
+        team = event.get("team")
+        opponent = event.get("opponent")
+        minute = event.get("minute", 0)
+        
+        # Establish team names
+        if home_team is None and team and opponent:
+            home_team = team
+            away_team = opponent
+            stats["goals_by_team"][home_team] = 0
+            stats["goals_by_team"][away_team] = 0
+            stats["xG_by_team"][home_team] = 0.0
+            stats["xG_by_team"][away_team] = 0.0
+        
+        # Track goals
+        if event_type == "GOAL" and team:
+            stats["goals_by_team"][team] = stats["goals_by_team"].get(team, 0) + 1
+            stats["total_goals"] += 1
+            
+            if player:
+                stats["goals_by_player"][player] = stats["goals_by_player"].get(player, 0) + 1
+                stats["scorers"].append({
+                    "player": player,
+                    "team": team,
+                    "minute": minute,
+                    "xG": event.get("xG", 0.0),
+                })
+            
+            # Track xG
+            xg_value = event.get("xG", 0.0)
+            if team:
+                stats["xG_by_team"][team] = stats["xG_by_team"].get(team, 0.0) + xg_value
+        
+        # Track tactical stats
+        if event.get("pass_accuracy") is not None and team:
+            pass_accuracy_data[team].append(event["pass_accuracy"])
+        
+        if event.get("pressure_index") is not None and team:
+            pressure_data[team].append(event["pressure_index"])
+        
+        # Track disciplinary
+        if event_type == "RED_CARD" and player:
+            stats["red_cards"].append({
+                "player": player,
+                "team": team,
+                "minute": minute,
+            })
+        
+        if event_type == "VAR_DECISION":
+            stats["var_decisions_count"] += 1
+    
+    # Calculate averages
+    for team, accuracies in pass_accuracy_data.items():
+        if accuracies:
+            stats["avg_pass_accuracy_by_team"][team] = round(sum(accuracies) / len(accuracies), 1)
+    
+    for team, pressures in pressure_data.items():
+        if pressures:
+            stats["avg_pressure_index_by_team"][team] = round(sum(pressures) / len(pressures), 1)
+    
+    # Add team names for display
+    stats["home_team"] = home_team
+    stats["away_team"] = away_team
+    
+    return stats
 
 
 def format_match_state_for_prompt(match_state: dict) -> str:

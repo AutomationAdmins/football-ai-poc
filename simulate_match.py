@@ -56,6 +56,8 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 38,
         "score": "1-1",
+        "pass_accuracy": 81.2,
+        "pressure_index": 68,
     },
     {
         "event": "HALF_TIME",
@@ -65,6 +67,8 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 45,
         "score": "1-1",
+        "pass_accuracy": 82.5,
+        "pressure_index": 65,
     },
     {
         "event": "GOAL",
@@ -91,7 +95,8 @@ MATCH_EVENTS = [
         "score": "2-1",
         "x": 45.0,
         "y": 60.5,
-        "pressure_index": 88
+        "pressure_index": 88,
+        "pass_accuracy": 73.5,
     },
     {
         "event": "GOAL",
@@ -116,6 +121,8 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 90,
         "score": "3-1",
+        "pass_accuracy": 84.2,
+        "pressure_index": 55,
     },
 ]
 

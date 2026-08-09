@@ -96,6 +96,9 @@ def _chat(prompt: str, max_tokens: int = 800) -> str:
 def _fallback_lead_story(editorial_context: dict) -> str:
     event = editorial_context.get("event", {}) if isinstance(editorial_context, dict) else {}
     facts = editorial_context.get("commentator_facts", {}) if isinstance(editorial_context, dict) else {}
+    player_ctx = editorial_context.get("player", {}) if isinstance(editorial_context, dict) else {}
+    match_state = editorial_context.get("match_state", {}) if isinstance(editorial_context, dict) else {}
+    player_performance = editorial_context.get("player_performance", {}) if isinstance(editorial_context, dict) else {}
 
     player = event.get("player") or facts.get("player") or "The player"
     team = event.get("team") or facts.get("team") or "the team"
@@ -104,44 +107,158 @@ def _fallback_lead_story(editorial_context: dict) -> str:
     score = event.get("score") or facts.get("score") or ""
     event_type = str(event.get("event_type") or "GOAL").upper()
 
-    if event_type == "RED_CARD":
-        lead = f"{player} is sent off for {team} against {opponent} at {minute}'. {score}."
-    elif event_type == "HALF_TIME":
-        lead = f"Half-time in {team} vs {opponent} — {score} at {minute}'."
-    elif event_type == "FULL_TIME":
-        lead = f"Full-time in {team} vs {opponent} — {score} at {minute}'."
-    elif event_type == "VAR_DECISION":
-        lead = f"VAR decision in {team} vs {opponent} at {minute}' — {score}."
-    elif event_type == "PENALTY":
-        lead = f"{player} scores a penalty for {team} against {opponent} — {score} at {minute}'."
-    elif event_type == "OWN_GOAL":
-        lead = f"{player} scores an own goal for {team} against {opponent} — {score} at {minute}'."
-    else:
-        lead = f"{player} scores for {team} against {opponent} — {score} at {minute}'."
+    # Build narrative consequence
+    consequence = ""
+    
+    # Check for milestone/performance narrative
+    if player_performance:
+        goals_today = player_performance.get("goals_today", 0)
+        if goals_today >= 3:
+            consequence = f"{player} completes a stunning hat-trick"
+        elif goals_today == 2:
+            consequence = f"{player} with his second of the match"
+    
+    # League stakes from commentator facts
+    if not consequence:
+        for key in ("promotion_stakes", "champions_league_stakes", "title_race", "relegation_stakes"):
+            val = facts.get(key)
+            if val and isinstance(val, str):
+                consequence = val
+                break
+    
+    # Season stats as colour
+    if not consequence and player_ctx:
+        season_goals = player_ctx.get("season_goals")
+        season_assists = player_ctx.get("season_assists")
+        if season_goals:
+            consequence = f"That's {season_goals} goals this season"
+            if season_assists:
+                consequence += f" alongside {season_assists} assists"
+    
+    # Score context narrative
+    if not consequence and score:
+        parts = score.split("-")
+        if len(parts) == 2:
+            try:
+                home_g, away_g = int(parts[0]), int(parts[1])
+                if home_g == away_g:
+                    consequence = "the scores are level"
+                elif abs(home_g - away_g) >= 3:
+                    leader = team if home_g > away_g else opponent
+                    consequence = f"{leader} running away with it"
+            except ValueError:
+                pass
 
-    # We no longer aggressively append consequence_bits to the fallback lead
-    # because it causes massive repetition on the frontend.
-    return lead.strip()
+    # Build the lead
+    if event_type == "RED_CARD":
+        base = f"{player} sees red for {team} against {opponent} at {minute}'. {score}"
+        if consequence:
+            lead = f"{base} — {consequence}"
+        else:
+            lead = f"{base} — {team} down to ten men"
+    elif event_type == "VAR_DECISION":
+        base = f"VAR intervenes in {team} vs {opponent} at {minute}' — {score}"
+        if consequence:
+            lead = f"{base}. {consequence}"
+        else:
+            lead = base
+    elif event_type == "PENALTY":
+        base = f"{player} converts from the spot for {team} against {opponent} — {score} at {minute}'"
+        if consequence:
+            lead = f"{base}. {consequence}"
+        else:
+            lead = base
+    elif event_type == "OWN_GOAL":
+        base = f"Own goal! {player} puts through his own net — {score} at {minute}'"
+        if consequence:
+            lead = f"{base}. {consequence}"
+        else:
+            lead = base
+    else:
+        # GOAL — tell the story
+        # Determine goal type from score context
+        goal_desc = "scores"
+        if score:
+            parts = score.split("-")
+            if len(parts) == 2:
+                try:
+                    home_g, away_g = int(parts[0]), int(parts[1])
+                    if home_g == away_g:
+                        goal_desc = "equalises"
+                    elif home_g + away_g == 1:
+                        goal_desc = "opens the scoring"
+                except ValueError:
+                    pass
+        
+        base = f"{player} {goal_desc} for {team} against {opponent} — {score} at {minute}'"
+        if consequence:
+            lead = f"{base}. {consequence}"
+        else:
+            lead = base
+
+    return lead.strip().rstrip(".")  + "."
 
 
 def _fallback_insights(editorial_context: dict) -> list[dict]:
     facts = editorial_context.get("commentator_facts", {}) if isinstance(editorial_context, dict) else {}
+    event = editorial_context.get("event", {}) if isinstance(editorial_context, dict) else {}
+    player_ctx = editorial_context.get("player", {}) if isinstance(editorial_context, dict) else {}
+    match_state = editorial_context.get("match_state", {}) if isinstance(editorial_context, dict) else {}
+    player_performance = editorial_context.get("player_performance", {}) if isinstance(editorial_context, dict) else {}
     insights = []
 
-    for category, key in (
-        ("milestone", "player_highlight"),
-        ("league_impact", "promotion_stakes"),
-        ("league_impact", "champions_league_stakes"),
-        ("league_impact", "title_race"),
-        ("match_context", "what_happened"),
-        ("player_stat", "player_highlight"),
-        ("team_stat", "team_highlight"),
-        ("opponent_impact", "opponent_line"),
-        ("head_to_head", "head_to_head"),
-    ):
-        value = facts.get(key)
-        if value:
-            insights.append({"category": category, "line": str(value), "facts_used": []})
+    player = event.get("player") or facts.get("player") or ""
+    team = event.get("team") or facts.get("team") or ""
+    
+    # Milestone insight
+    milestone_text = facts.get("player_highlight")
+    if milestone_text:
+        insights.append({"category": "milestone", "line": str(milestone_text), "facts_used": []})
+    
+    # League impact
+    for key in ("promotion_stakes", "champions_league_stakes", "title_race", "relegation_stakes"):
+        val = facts.get(key)
+        if val and isinstance(val, str):
+            insights.append({"category": "league_impact", "line": val, "facts_used": []})
+            break
+    
+    # Player stat — build a natural sentence
+    if player and player_ctx:
+        season_goals = player_ctx.get("season_goals")
+        season_assists = player_ctx.get("season_assists")
+        goals_today = player_performance.get("goals_today", 0) if player_performance else 0
+        
+        parts = []
+        if goals_today > 0:
+            parts.append(f"{player} now has {goals_today} goal{'s' if goals_today > 1 else ''} in this match")
+        if season_goals is not None:
+            stat = f"{season_goals} goals"
+            if season_assists is not None:
+                stat += f" and {season_assists} assists"
+            parts.append(f"{stat} this season")
+        
+        if parts:
+            insights.append({"category": "player_stat", "line": " — ".join(parts), "facts_used": []})
+    
+    # Team stat
+    team_highlight = facts.get("team_highlight")
+    if team_highlight:
+        insights.append({"category": "team_stat", "line": str(team_highlight), "facts_used": []})
+    
+    # Head to head
+    h2h = facts.get("head_to_head")
+    if h2h:
+        insights.append({"category": "head_to_head", "line": str(h2h), "facts_used": []})
+    
+    # Opponent impact
+    opp = facts.get("opponent_line")
+    if opp:
+        insights.append({"category": "opponent_impact", "line": str(opp), "facts_used": []})
+
+    # Match context - what's happening in the game right now
+    what_happened = facts.get("what_happened")
+    if what_happened:
+        insights.append({"category": "match_context", "line": str(what_happened), "facts_used": []})
 
     if not insights:
         insights.append({

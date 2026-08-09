@@ -16,4 +16,10 @@ def process_event(event: dict) -> dict:
         "opponent": event.get("opponent"),
         "minute": event.get("minutes"),
         "score": event.get("score"),
+        "xG": event.get("xG"),
+        "pass_accuracy": event.get("pass_accuracy"),
+        "pressure_index": event.get("pressure_index"),
+        "x": event.get("x"),
+        "y": event.get("y"),
+        "build_up_players": event.get("build_up_players"),
     }

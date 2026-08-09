@@ -75,10 +75,13 @@ def get_all_pending_insights() -> list[dict]:
     db = _get_db()
     results: list[dict] = []
     
-    # Use a Collection Group query without filter to avoid index requirement
+    # Use a Collection Group query on 'items' subcollections
     item_docs = db.collection_group("items").stream()
     
     for doc in item_docs:
+        # Only include items under insights/ (not training_data/)
+        if "training_data" in doc.reference.path:
+            continue
         payload = doc.to_dict()
         if payload.get("status") == "pending":
             results.append({"id": doc.id, **payload})

@@ -235,33 +235,33 @@ Use this to describe the CURRENT match situation, not just season-long stats.
         )
 
     if event_type == "RED_CARD":
-        lead_format = '"[Full Player Name] is sent off for [Team] against [Opponent] at [Minute]\'. [Score]. [One key consequence OR one standout stat]."'
-        match_context_format = '"[Player] is sent off for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"[Player] sees red for [Team] against [Opponent] at [Minute]\'. [Score] — [narrative consequence: what this means for the match/team/league]."'
+        match_context_format = '"[Player] is sent off — [Team] down to ten men against [Opponent] at [Minute]\', [Score]."'
         goal_type_rule = ""
     elif event_type == "HALF_TIME":
-        lead_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key narrative: who\'s on top and why]."'
+        match_context_format = '"Half-time — [Score] between [Team] and [Opponent]."'
         goal_type_rule = ""
     elif event_type == "FULL_TIME":
-        lead_format = '"Full-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"Full-time in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"Full-time — [Team] [Score] [Opponent]. [Narrative: star performer, key moment, or league impact]."'
+        match_context_format = '"Full-time — [Team] [Score] [Opponent]."'
         goal_type_rule = ""
     elif event_type == "VAR_DECISION":
-        lead_format = '"VAR decision in [Team] vs [Opponent] at [Minute]\' — [Score]. [One key consequence OR one standout stat]."'
-        match_context_format = '"VAR decision in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"VAR intervenes in [Team] vs [Opponent] at [Minute]\' — [Score]. [What was the decision and its impact]."'
+        match_context_format = '"VAR decision at [Minute]\' in [Team] vs [Opponent] — [Score]."'
         goal_type_rule = ""
     elif event_type == "PENALTY":
-        lead_format = '"[Full Player Name] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        lead_format = '"[Player] converts from the spot for [Team] against [Opponent] — [Score] at [Minute]\'. [Consequence or stat]."'
         match_context_format = '"[Player] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'."'
         goal_type_rule = ""
     elif event_type == "OWN_GOAL":
-        lead_format = '"[Full Player Name] scores an own goal for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"[Player] scores an own goal for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"Own goal! [Player] puts through his own net — [Team] [Score] [Opponent] at [Minute]\'. [Impact]."'
+        match_context_format = '"Own goal from [Player] — [Score] at [Minute]\'."'
         goal_type_rule = ""
     else:
-        lead_format = '"[Full Player Name] scores [goal type] for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]\'."'
-        goal_type_rule = '- Goal type must be specific: "the equaliser", "the go-ahead goal", "a penalty", "his Nth goal of the season", "his 100th Premier League goal"\n   '
+        lead_format = '"[Player] [goal verb: equalises/opens the scoring/restores the lead/scores] for [Team] against [Opponent] — [Score] at [Minute]\'. [Consequence: season tally, hat-trick, league impact]."'
+        match_context_format = '"[Player] scores for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = '- Goal verb must reflect match context: "equalises", "opens the scoring", "restores the lead", "doubles the advantage", "completes his hat-trick", "pulls one back"\n   '
 
     prompt = f"""
 You are a broadcast football statistician preparing lines for live TV commentators.
