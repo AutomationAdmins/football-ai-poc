@@ -148,6 +148,11 @@ def build_insight_prompt(editorial_context: dict, match_history: list[dict] | No
     commentator = cleaned.get("commentator_facts", {})
     event_info = cleaned.get("event", {})
     event_type = event_info.get("event_type", "GOAL").upper()
+    
+    # Extract match state and anti-repetition data
+    match_state = cleaned.get("match_state", {})
+    player_performance = cleaned.get("player_performance", {})
+    used_insights = cleaned.get("used_insights", [])
 
     has_milestone = bool(
         player.get("next_milestone")
@@ -168,7 +173,52 @@ def build_insight_prompt(editorial_context: dict, match_history: list[dict] | No
             "You MUST generate a 'milestone' insight. State the player's name, their current tally, the target, and why it is significant. "
             "Example: \"Haaland on 99 Premier League goals — 1 away from 100, the fastest player in history to reach the landmark.\""
         )
+    
+    # Add hat-trick/brace detection from match state
+    if player_performance:
+        if player_performance.get("is_hat_trick"):
+            milestone_rule = (
+                "\nHAT-TRICK DETECTED (MANDATORY): The player has scored 3+ goals in this match. "
+                f"You MUST mention 'HAT-TRICK' or 'completes his hat-trick' in the lead story. "
+                f"Player has scored {player_performance.get('goals_today')} goals today. {milestone_rule}"
+            )
+        elif player_performance.get("is_brace"):
+            milestone_rule = (
+                "\nBRACE DETECTED: The player has scored 2 goals in this match. "
+                f"Consider mentioning 'his second goal of the match' if contextually relevant. {milestone_rule}"
+            )
 
+    
+    # Anti-repetition section
+    anti_repetition_rule = ""
+    if used_insights:
+        anti_repetition_rule = f"""
+CRITICAL ANTI-REPETITION RULE:
+The following insight lines have ALREADY been shown to viewers in earlier events.
+DO NOT repeat these exact phrases or very similar variations:
+
+{json.dumps(used_insights[:15], indent=2)}
+
+Focus on NEW information:
+- What changed SINCE the last event (e.g., score change, red card impact)
+- Player performance TODAY (goals scored in this match: {player_performance.get('goals_today', 0) if player_performance else 0})
+- Match narrative shifts (comeback, collapse, dominance)
+
+If a fact was already shown, find a NEW angle or skip it entirely.
+"""
+    
+    # Match state context
+    match_state_summary = ""
+    if match_state:
+        match_state_summary = f"""
+LIVE MATCH STATE (use this to provide fresh context):
+- Goals by players today: {dict(match_state.get('goals_by_player', {}))}
+- Current minute: {match_state.get('current_minute', 0)}'
+- Score progression: {match_state.get('score_progression', [])}
+- Red cards: {match_state.get('red_cards', [])}
+
+Use this to describe the CURRENT match situation, not just season-long stats.
+"""
     h2h_rule = ""
     if has_head_to_head:
         h2h_rule = (
@@ -185,33 +235,33 @@ def build_insight_prompt(editorial_context: dict, match_history: list[dict] | No
         )
 
     if event_type == "RED_CARD":
-        lead_format = '"[Full Player Name] is sent off for [Team] against [Opponent] at [Minute]\'. [Score]. [One key consequence OR one standout stat]."'
-        match_context_format = '"[Player] is sent off for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"[Player] sees red for [Team] against [Opponent] at [Minute]\'. [Score] — [narrative consequence: what this means for the match/team/league]."'
+        match_context_format = '"[Player] is sent off — [Team] down to ten men against [Opponent] at [Minute]\', [Score]."'
         goal_type_rule = ""
     elif event_type == "HALF_TIME":
-        lead_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"Half-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key narrative: who\'s on top and why]."'
+        match_context_format = '"Half-time — [Score] between [Team] and [Opponent]."'
         goal_type_rule = ""
     elif event_type == "FULL_TIME":
-        lead_format = '"Full-time in [Team] vs [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"Full-time in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"Full-time — [Team] [Score] [Opponent]. [Narrative: star performer, key moment, or league impact]."'
+        match_context_format = '"Full-time — [Team] [Score] [Opponent]."'
         goal_type_rule = ""
     elif event_type == "VAR_DECISION":
-        lead_format = '"VAR decision in [Team] vs [Opponent] at [Minute]\' — [Score]. [One key consequence OR one standout stat]."'
-        match_context_format = '"VAR decision in [Team] vs [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"VAR intervenes in [Team] vs [Opponent] at [Minute]\' — [Score]. [What was the decision and its impact]."'
+        match_context_format = '"VAR decision at [Minute]\' in [Team] vs [Opponent] — [Score]."'
         goal_type_rule = ""
     elif event_type == "PENALTY":
-        lead_format = '"[Full Player Name] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
+        lead_format = '"[Player] converts from the spot for [Team] against [Opponent] — [Score] at [Minute]\'. [Consequence or stat]."'
         match_context_format = '"[Player] scores a penalty for [Team] against [Opponent] — [Score] at [Minute]\'."'
         goal_type_rule = ""
     elif event_type == "OWN_GOAL":
-        lead_format = '"[Full Player Name] scores an own goal for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"[Player] scores an own goal for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        lead_format = '"Own goal! [Player] puts through his own net — [Team] [Score] [Opponent] at [Minute]\'. [Impact]."'
+        match_context_format = '"Own goal from [Player] — [Score] at [Minute]\'."'
         goal_type_rule = ""
     else:
-        lead_format = '"[Full Player Name] scores [goal type] for [Team] against [Opponent] — [Score] at [Minute]\'. [One key consequence OR one standout stat]."'
-        match_context_format = '"[Player] scores/equalises for [Team] against [Opponent] — [Score] at [Minute]\'."'
-        goal_type_rule = '- Goal type must be specific: "the equaliser", "the go-ahead goal", "a penalty", "his Nth goal of the season", "his 100th Premier League goal"\n   '
+        lead_format = '"[Player] [goal verb: equalises/opens the scoring/restores the lead/scores] for [Team] against [Opponent] — [Score] at [Minute]\'. [Consequence: season tally, hat-trick, league impact]."'
+        match_context_format = '"[Player] scores for [Team] against [Opponent] — [Score] at [Minute]\'."'
+        goal_type_rule = '- Goal verb must reflect match context: "equalises", "opens the scoring", "restores the lead", "doubles the advantage", "completes his hat-trick", "pulls one back"\n   '
 
     prompt = f"""
 You are a broadcast football statistician preparing lines for live TV commentators.
@@ -256,6 +306,7 @@ Rules
 
 Data Specificity Rules — CRITICAL:
 
+- DO NOT calculate point differences, new totals, or do ANY math yourself. Use ONLY the exact numbers provided in the Context. If you try to calculate a new points total, you will fail validation.
 - match_context MUST follow: {match_context_format} Then append the player's consecutive streak if available, or their season goal tally.
 - player_stat MUST name the player and include: goals, assists (if available), own_goals (if available), and the consecutive streak (if available). Example: "Saka has 23 goals and 14 assists this season — 7 consecutive goal involvements."
 - team_stat MUST name the team and include at least two numbers (points, position, streak, goal difference, or home record).

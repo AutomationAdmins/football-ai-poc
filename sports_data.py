@@ -52,7 +52,7 @@ def _find_fixture(stats: dict, league: str | None, team: str | None, opponent: s
     return None
 
 
-def _apply_increments(context: dict, event_type: str) -> dict:
+def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
     """Returns a deep copy of context with counters incremented to reflect the current event."""
     updated = copy.deepcopy(context)
 
@@ -62,6 +62,14 @@ def _apply_increments(context: dict, event_type: str) -> dict:
             if field not in player_stats:
                 player_stats[field] = 0
             player_stats[field] += 1
+        
+        # Add live event data (xG, position, build-up) to player context
+        if event.get("xG") is not None:
+            player_stats["xG_this_event"] = event["xG"]
+        if event.get("x") is not None and event.get("y") is not None:
+            player_stats["shot_location"] = {"x": event["x"], "y": event["y"]}
+        if event.get("build_up_players"):
+            player_stats["assisted_by"] = event["build_up_players"]
 
     team_fields = _TEAM_INCREMENTS.get(event_type, [])
     for team_stats in updated.get("team_stats", {}).values():
@@ -69,6 +77,12 @@ def _apply_increments(context: dict, event_type: str) -> dict:
             if field not in team_stats:
                 team_stats[field] = 0
             team_stats[field] += 1
+        
+        # Add team-level live stats
+        if event.get("pass_accuracy") is not None:
+            team_stats["pass_accuracy_this_event"] = event["pass_accuracy"]
+        if event.get("pressure_index") is not None:
+            team_stats["pressure_index"] = event["pressure_index"]
 
     return updated
 
@@ -112,4 +126,4 @@ def get_context(event: dict) -> dict:
         context["fixture_lookup"] = {"selected_fixture": {"name": fixture}}
 
     # Increment counters to reflect the event that just happened
-    return _apply_increments(context, event.get("event_type", ""))
+    return _apply_increments(context, event.get("event_type", ""), event)

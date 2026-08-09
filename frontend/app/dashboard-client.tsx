@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState, useTransition, useEffect } from 'react';
-import Image from 'next/image';
 
 type InsightStat = {
   category: string;
@@ -43,17 +42,13 @@ function getTeamLogo(teamName: string) {
 }
 
 function parseFixtureId(fixtureId: string) {
-  // e.g. "arsenal-vs-chelsea-2025-08-02" -> ["Arsenal", "Chelsea"]
   const parts = fixtureId.split('-vs-');
   if (parts.length !== 2) return { home: 'Home', away: 'Away' };
   
   const home = parts[0];
   const awayParts = parts[1].split('-');
-  
-  // Try to extract just the team name before the date
   let away = awayParts[0];
   if (awayParts.length > 3) {
-    // If there's a year-month-day, it's usually the last 3 parts
     away = awayParts.slice(0, awayParts.length - 3).join(' ');
   }
 
@@ -68,18 +63,44 @@ function formatEventType(value?: string) {
   return value.replaceAll('_', ' ');
 }
 
-function Badge({ label, type = 'light' }: { label: string, type?: 'light' | 'dark' | 'red' | 'green' | 'yellow' }) {
-  return <span className={`badge badge--${type}`}>{label}</span>;
+/**
+ * Pick the single most important lead story across all matches.
+ * Priority: GOAL with hat-trick > GOAL with equaliser > RED_CARD > any GOAL > other
+ */
+function pickLeadStory(insights: InsightItem[]): InsightItem | null {
+  if (insights.length === 0) return null;
+
+  const scored = insights
+    .filter(i => i.lead_story)
+    .map(i => {
+      let weight = 0;
+      const lead = (i.lead_story ?? '').toLowerCase();
+      const eventType = (i.event_type ?? '').toUpperCase();
+
+      // Hat-trick is the biggest story
+      if (lead.includes('hat-trick') || lead.includes('hat trick')) weight += 100;
+      // Equaliser or comeback
+      if (lead.includes('equalis') || lead.includes('pulls one back')) weight += 60;
+      // Red card drama
+      if (eventType === 'RED_CARD') weight += 50;
+      // Any goal
+      if (eventType === 'GOAL') weight += 30;
+      // League impact language
+      if (lead.includes('promotion') || lead.includes('title') || lead.includes('relegation') || lead.includes('champions league')) weight += 40;
+      // More recent = slight preference
+      weight += (i.minute ?? 0) * 0.1;
+
+      return { item: i, weight };
+    })
+    .sort((a, b) => b.weight - a.weight);
+
+  return scored[0]?.item ?? null;
 }
 
 export default function DashboardClient({ initialInsights }: { initialInsights: InsightItem[] }) {
   const [insights, setInsights] = useState<InsightItem[]>(initialInsights);
   const [isRefreshing, startRefresh] = useTransition();
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
-
-  const totalCards = insights.length;
-  const leadCount = useMemo(() => insights.filter((item) => item.lead_story).length, [insights]);
 
   // Group insights by fixture_id
   const insightsByFixture = useMemo(() => {
@@ -88,10 +109,11 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
       if (!groups[item.fixture_id]) groups[item.fixture_id] = [];
       groups[item.fixture_id].push(item);
     });
-    
     Object.values(groups).forEach(list => list.sort((a, b) => (b.minute || 0) - (a.minute || 0)));
     return groups;
   }, [insights]);
+
+  const leadStory = useMemo(() => pickLeadStory(insights), [insights]);
 
   async function refreshInsights() {
     startRefresh(async () => {
@@ -103,186 +125,132 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
   }
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      refreshInsights();
-    }, 5000);
+    const interval = setInterval(() => refreshInsights(), 5000);
     return () => clearInterval(interval);
   }, []);
 
-  async function decide(fixtureId: string, insightId: string, action: 'approve' | 'reject') {
-    const actionKey = `${fixtureId}:${insightId}`;
-    setPendingActionId(actionKey);
-
-    try {
-      const response = await fetch(`/api/decide/${fixtureId}/${insightId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-
-      if (!response.ok) throw new Error('Action failed');
-      setInsights((current) => current.filter((item) => item.id !== insightId));
-    } finally {
-      setPendingActionId(null);
-    }
-  }
-
   return (
     <main className="shell">
+      {/* Header */}
       <header className="hero">
         <div className="hero__eyebrow" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginLeft: '0', background: 'white', padding: '4px 8px', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'white', padding: '4px 8px', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
             <img src="/logos/skysports.png" alt="Sky Sports" style={{ height: '24px', objectFit: 'contain' }} />
           </div>
           <div style={{ display: 'flex', gap: '16px', fontSize: '0.85rem', color: '#bfdbfe', fontWeight: 500 }}>
             <span>{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-            <span>{lastUpdated ? `Updated ${lastUpdated}` : 'Auto-refresh ready'}</span>
+            <span>{lastUpdated ? `Updated ${lastUpdated}` : ''}</span>
           </div>
         </div>
         <div className="hero__row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ margin: 0 }}>Soccer Saturday - Intelligent Insights Generator</h1>
-          </div>
-          <div className="hero__stats" style={{ display: 'flex', alignItems: 'center' }}>
-            <div 
-              onClick={refreshInsights}
-              title="Click to refresh data"
-              style={{ 
-                cursor: 'pointer', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                padding: '4px 12px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                borderRadius: '999px',
-                transition: 'opacity 0.2s'
-              }}
-            >
-              <div 
-                className={isRefreshing ? 'dot-blinking' : ''}
-                style={{ 
-                  width: '10px', 
-                  height: '10px', 
-                  backgroundColor: '#ef4444', 
-                  borderRadius: '50%',
-                  boxShadow: '0 0 8px #ef4444'
-                }} 
-              />
-              <span style={{ color: 'white', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.5px' }}>
-                LIVE
-              </span>
-            </div>
+          <h1 style={{ margin: 0 }}>Soccer Saturday Intelligent Insight Generator</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: '999px', cursor: 'pointer' }} onClick={refreshInsights}>
+            <div className={isRefreshing ? 'dot-blinking' : ''} style={{ width: '10px', height: '10px', backgroundColor: '#ef4444', borderRadius: '50%', boxShadow: '0 0 8px #ef4444' }} />
+            <span style={{ color: 'white', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.5px' }}>LIVE</span>
           </div>
         </div>
       </header>
 
-      <section className="content">
+      {/* Lead Story Banner */}
+      {leadStory && (
+        <section className="lead-story-banner" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #ef4444', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <span style={{ background: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lead Story</span>
+            <span style={{ color: '#64748b', fontSize: '0.8rem', fontWeight: 500 }}>{leadStory.minute}&apos; — {formatEventType(leadStory.event_type)}</span>
+          </div>
+          <p style={{ color: '#0f172a', fontSize: '1.2rem', fontWeight: 700, margin: 0, lineHeight: 1.4 }}>
+            {leadStory.lead_story}
+          </p>
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '8px 0 0', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+            {leadStory.fixture_id.replace(/-/g, ' ').replace(/\d{4} \d{2} \d{2}/, '').trim()}
+          </p>
+        </section>
+      )}
+
+      {/* Score Cards Grid */}
+      <section>
         {insights.length === 0 ? (
           <div className="empty-state">
-            <h2>No pending insights</h2>
-            <p>Run the match simulator or wait for the Pub/Sub feed to populate the dashboard.</p>
+            <h2>No live matches</h2>
+            <p>Waiting for events...</p>
           </div>
         ) : (
-          Object.entries(insightsByFixture).map(([fixtureId, items]) => {
-            const { home, away } = parseFixtureId(fixtureId);
-            const homeLogo = getTeamLogo(home);
-            const awayLogo = getTeamLogo(away);
-            
-            // Latest score and minute from the most recent event (index 0 because we sorted desc)
-            const latestScore = items[0]?.score ?? '0-0';
-            const latestMinute = items[0]?.minute ?? 0;
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '24px', width: '100%' }}>
+            {Object.entries(insightsByFixture).map(([fixtureId, items]) => {
+              const { home, away } = parseFixtureId(fixtureId);
+              const homeLogo = getTeamLogo(home);
+              const awayLogo = getTeamLogo(away);
+              const latestScore = items[0]?.score ?? '0-0';
+              const latestMinute = items[0]?.minute ?? 0;
+              const latestEvent = items[0];
 
-            return (
-              <div key={fixtureId} className="match-group">
-                {/* Scoreboard Header */}
-                <div className="scoreboard">
-                  <div className="scoreboard__header">
-                    <span>Premier League</span>
-                    <span>{fixtureId}</span>
+              // Determine league from first item or fixture
+              const league = fixtureId.includes('leeds') || fixtureId.includes('sunderland') ? 'EFL Championship' : 'Premier League';
+
+              return (
+                <a
+                  key={fixtureId}
+                  href={`/match/${encodeURIComponent(fixtureId)}`}
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  <div className="score-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(59, 130, 246, 0.1), 0 4px 6px -2px rgba(59, 130, 246, 0.05)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.04)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    {/* League label */}
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                      <span style={{ color: '#3b82f6' }}>{league}</span>
+                      <span style={{ color: latestMinute >= 90 ? '#64748b' : '#ef4444', background: latestMinute >= 90 ? 'transparent' : '#fee2e2', padding: latestMinute >= 90 ? '0' : '2px 8px', borderRadius: '4px' }}>
+                        {latestMinute >= 90 ? 'FT' : `${latestMinute}'`}
+                      </span>
+                    </div>
+
+                    {/* Teams and Score */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      {/* Home Team */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                        {homeLogo ? <img src={homeLogo} alt={home} style={{ width: '36px', height: '36px', objectFit: 'contain' }} /> : <div style={{ width: '36px', height: '36px', background: '#f1f5f9', borderRadius: '50%' }} />}
+                        <span style={{ color: '#0f172a', fontWeight: 700, fontSize: '1rem', textTransform: 'capitalize' }}>{home}</span>
+                      </div>
+
+                      {/* Score */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '8px 16px', borderRadius: '8px', minWidth: '76px', textAlign: 'center', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <span style={{ color: '#0f172a', fontSize: '1.5rem', fontWeight: 800, letterSpacing: '1px' }}>{latestScore}</span>
+                      </div>
+
+                      {/* Away Team */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, justifyContent: 'flex-end' }}>
+                        <span style={{ color: '#0f172a', fontWeight: 700, fontSize: '1rem', textTransform: 'capitalize' }}>{away}</span>
+                        {awayLogo ? <img src={awayLogo} alt={away} style={{ width: '36px', height: '36px', objectFit: 'contain' }} /> : <div style={{ width: '36px', height: '36px', background: '#f1f5f9', borderRadius: '50%' }} />}
+                      </div>
+                    </div>
+
+                    {/* Latest Event Preview */}
+                    {latestEvent && (
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                        <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0, lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {latestEvent.lead_story}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Event count */}
+                    <div style={{ marginTop: '12px', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{items.length} event{items.length !== 1 ? 's' : ''}</span>
+                      <span style={{ color: '#3b82f6' }}>Click for details &rarr;</span>
+                    </div>
                   </div>
-                  <div className="scoreboard__teams">
-                    <div className="scoreboard__team">
-                      {homeLogo ? <img src={homeLogo} alt={home} className="scoreboard__logo" /> : <div className="scoreboard__logo" />}
-                      <span className="scoreboard__team-name">{home}</span>
-                    </div>
-                    
-                    <div className="scoreboard__score-area">
-                      <div className="scoreboard__score">{latestScore}</div>
-                      <div className="scoreboard__minute">{latestMinute}'</div>
-                      {items[0] && (
-                        <div className="scoreboard__recent-event">
-                          <Badge label={formatEventType(items[0].event_type)} type="red" />
-                          {items[0].player && <span className="scoreboard__recent-player">{items[0].player}</span>}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="scoreboard__team">
-                      {awayLogo ? <img src={awayLogo} alt={away} className="scoreboard__logo" /> : <div className="scoreboard__logo" />}
-                      <span className="scoreboard__team-name">{away}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Timeline Events */}
-                <div className="timeline">
-                  {items.map((item, index) => {
-                    const actionKeyApprove = `${fixtureId}:${item.id}:approve`;
-                    const actionKeyReject = `${fixtureId}:${item.id}:reject`;
-                    const isProcessing = pendingActionId === actionKeyApprove || pendingActionId === actionKeyReject;
-
-                    return (
-                      <article className="event-card" key={item.id}>
-                        <div className="event-card__header">
-                          <div className="event-card__eyebrow" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {index === 0 && <Badge label="NEW" type="red" />}
-                            Event {items.length - index} — {formatEventType(item.event_type)}
-                          </div>
-                          <h3 className="event-card__title">
-                            {item.lead_story ?? 'Untitled insight'}
-                          </h3>
-                        </div>
-                        
-                        <div className="event-card__body">
-                          <ul className="insights-list">
-                            {(item.insights ?? []).map((insight, idx) => (
-                              <li key={`${item.id}-${insight.category}`}>
-                                <div className="insight-number">{idx + 1}</div>
-                                <div className="insight-text">{insight.line}</div>
-                                <Badge 
-                                  label={insight.category.replaceAll('_', ' ')} 
-                                  type={insight.category.includes('IMPACT') ? 'yellow' : 'light'} 
-                                />
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        
-                        <div className="event-card__actions">
-                          <button
-                            className="button button--approve"
-                            onClick={() => decide(fixtureId, item.id, 'approve')}
-                            disabled={isProcessing}
-                          >
-                            ✓ Approve
-                          </button>
-                          <button
-                            className="button button--reject"
-                            onClick={() => decide(fixtureId, item.id, 'reject')}
-                            disabled={isProcessing}
-                          >
-                            × Reject
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })
+                </a>
+              );
+            })}
+          </div>
         )}
       </section>
+
+      {/* Footer */}
+      <footer style={{ marginTop: '48px', padding: '24px 0', borderTop: '1px solid #e2e8f0', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+        <p>&copy; {new Date().getFullYear()} Sky Sports Football Editorial Dashboard. Powered by AI.</p>
+      </footer>
     </main>
   );
 }

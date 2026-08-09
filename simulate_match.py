@@ -26,6 +26,12 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 14,
         "score": "1-0",
+        "x": 88.5,
+        "y": 40.2,
+        "xG": 0.12,
+        "pass_accuracy": 85.4,
+        "pressure_index": 62,
+        "build_up_players": ["Martin Ødegaard", "Declan Rice"]
     },
     {
         "event": "GOAL",
@@ -35,6 +41,12 @@ MATCH_EVENTS = [
         "opponent": "Arsenal",
         "minutes": 31,
         "score": "1-1",
+        "x": 92.1,
+        "y": 50.0,
+        "xG": 0.45,
+        "pass_accuracy": 78.1,
+        "pressure_index": 75,
+        "build_up_players": ["Enzo Fernández", "Raheem Sterling"]
     },
     {
         "event": "VAR_DECISION",
@@ -44,6 +56,8 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 38,
         "score": "1-1",
+        "pass_accuracy": 81.2,
+        "pressure_index": 68,
     },
     {
         "event": "HALF_TIME",
@@ -53,6 +67,8 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 45,
         "score": "1-1",
+        "pass_accuracy": 82.5,
+        "pressure_index": 65,
     },
     {
         "event": "GOAL",
@@ -62,6 +78,12 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 67,
         "score": "2-1",
+        "x": 75.3,
+        "y": 30.1,
+        "xG": 0.05,
+        "pass_accuracy": 82.0,
+        "pressure_index": 45,
+        "build_up_players": ["Ben White"]
     },
     {
         "event": "RED_CARD",
@@ -71,6 +93,10 @@ MATCH_EVENTS = [
         "opponent": "Arsenal",
         "minutes": 78,
         "score": "2-1",
+        "x": 45.0,
+        "y": 60.5,
+        "pressure_index": 88,
+        "pass_accuracy": 73.5,
     },
     {
         "event": "GOAL",
@@ -80,6 +106,12 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 89,
         "score": "3-1",
+        "x": 95.0,
+        "y": 50.0,
+        "xG": 0.85, # penalty or tap-in like xG
+        "pass_accuracy": 88.5,
+        "pressure_index": 20,
+        "build_up_players": ["Leandro Trossard", "Kai Havertz"]
     },
     {
         "event": "FULL_TIME",
@@ -89,6 +121,8 @@ MATCH_EVENTS = [
         "opponent": "Chelsea",
         "minutes": 90,
         "score": "3-1",
+        "pass_accuracy": 84.2,
+        "pressure_index": 55,
     },
 ]
 

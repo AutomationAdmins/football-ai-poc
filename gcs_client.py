@@ -1,5 +1,6 @@
 import json
 import os
+from functools import lru_cache
 
 from google.cloud import storage
 
@@ -14,6 +15,7 @@ def _get_client() -> storage.Client:
     return _client
 
 
+@lru_cache(maxsize=10)
 def get_prematch_stats(fixture_id: str) -> dict:
     """Download and return pre-match stats JSON for a fixture from GCS."""
     bucket = _get_client().bucket(_GCS_BUCKET)

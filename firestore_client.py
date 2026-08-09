@@ -28,11 +28,15 @@ def append_match_event(fixture_id: str, event: dict) -> str:
     return ref.id
 
 
-def get_match_history(fixture_id: str) -> list[dict]:
-    """Return all events logged so far for this fixture, oldest first."""
+def get_match_history(fixture_id: str, limit: int = 10) -> list[dict]:
+    """Return recent events logged so far for this fixture, oldest first."""
     col = _get_db().collection("match_log").document(fixture_id).collection("events")
-    docs = col.order_by("recorded_at").stream()
-    return [doc.to_dict() for doc in docs]
+    # Fetch the most recent 'limit' events
+    docs = col.order_by("recorded_at", direction=firestore.Query.DESCENDING).limit(limit).stream()
+    # Reverse to keep chronological order (oldest to newest)
+    events = [doc.to_dict() for doc in docs]
+    events.reverse()
+    return events
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +66,7 @@ def get_pending_insights(fixture_id: str) -> list[dict]:
         .stream()
     )
     results = [{"id": doc.id, **doc.to_dict()} for doc in docs]
-    results.sort(key=lambda x: x.get("created_at"), reverse=True)
+    results.sort(key=lambda x: x.get("created_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return results
 
 
@@ -70,23 +74,40 @@ def get_all_pending_insights() -> list[dict]:
     """Return pending insights across all fixtures for the dashboard."""
     db = _get_db()
     results: list[dict] = []
-    fixture_docs = db.collection("insights").stream()
-    for fixture_doc in fixture_docs:
-        item_docs = (
-            db.collection("insights")
-            .document(fixture_doc.id)
-            .collection("items")
-            .where(filter=firestore.FieldFilter("status", "==", "pending"))
-            .stream()
-        )
-        for doc in item_docs:
-            payload = doc.to_dict()
-            if "fixture_id" not in payload:
-                payload["fixture_id"] = fixture_doc.id
+    
+    # Use a Collection Group query on 'items' subcollections
+    item_docs = db.collection_group("items").stream()
+    
+    for doc in item_docs:
+        # Only include items under insights/ (not training_data/)
+        if "training_data" in doc.reference.path:
+            continue
+        payload = doc.to_dict()
+        if payload.get("status") == "pending":
             results.append({"id": doc.id, **payload})
 
-    results.sort(key=lambda x: x.get("created_at"), reverse=True)
+    results.sort(key=lambda x: x.get("created_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return results
+
+
+def get_used_insight_lines(fixture_id: str) -> set[str]:
+    """
+    Return all insight lines already shown for this fixture.
+    Used for anti-repetition filtering.
+    """
+    col = _get_db().collection("insights").document(fixture_id).collection("items")
+    docs = col.stream()
+    
+    used_lines = set()
+    for doc in docs:
+        data = doc.to_dict()
+        insights = data.get("insights", [])
+        for insight in insights:
+            line = insight.get("line")
+            if line:
+                used_lines.add(line.strip())
+    
+    return used_lines
 
 
 # ---------------------------------------------------------------------------
