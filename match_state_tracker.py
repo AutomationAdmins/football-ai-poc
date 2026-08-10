@@ -32,7 +32,7 @@ def build_match_state(match_history: list[dict], current_event: dict) -> dict:
     for event in all_events:
         event_type = event.get("event_type", "").upper()
         player = event.get("player")
-        minute = event.get("minute", 0)
+        minute = event.get("minute") or 0
         score = event.get("score")
         team = event.get("team")
         opponent = event.get("opponent")
@@ -60,7 +60,7 @@ def build_match_state(match_history: list[dict], current_event: dict) -> dict:
                 })
 
             # Track xG if available
-            xg_value = event.get("xG", 0.0)
+            xg_value = event.get("xG") or 0.0
             if team == home_team:
                 state["xG_cumulative"]["home"] += xg_value
             else:
@@ -264,11 +264,11 @@ def build_match_statistics(match_history: list[dict], current_event: dict) -> di
                     "player": player,
                     "team": team,
                     "minute": minute,
-                    "xG": event.get("xG", 0.0),
+                    "xG": event.get("xG") or 0.0,
                 })
             
             # Track xG
-            xg_value = event.get("xG", 0.0)
+            xg_value = event.get("xG") or 0.0
             if team:
                 stats["xG_by_team"][team] = stats["xG_by_team"].get(team, 0.0) + xg_value
         
