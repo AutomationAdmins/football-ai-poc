@@ -24,16 +24,25 @@ const logoMap: Record<string, string> = {
   'chelsea': 'Chelsea.png',
   'leeds': 'leeds united.png',
   'sunderland': 'Sunderland.png',
-  'manchester city': 'manchester city.png',
+  'manchester city': 'manchester city.svg',
+  'man city': 'manchester city.svg',
+  'manchester united': 'manchester united.png',
+  'man utd': 'manchester united.png',
+  'crystal palace': 'crystal palace.png',
+  'tottenham': 'tottenham.png',
   'middlesbrough': 'Middlesbrough.png',
   'newcastle': 'Newcastle United.png',
   'sheffield': 'Sheffield United.png'
 };
 
 function getTeamLogo(teamName: string) {
-  const normalized = teamName.toLowerCase().replace(/ united| fc| city/g, '').trim();
+  const normalized = teamName.toLowerCase().trim();
+  if (logoMap[normalized]) {
+    return `/logos/${logoMap[normalized]}`;
+  }
+  const stripped = normalized.replace(/ united| fc| city| utd/g, '').trim();
   for (const [key, filename] of Object.entries(logoMap)) {
-    if (normalized.includes(key) || key.includes(normalized)) {
+    if (stripped.length > 2 && (key.includes(stripped) || stripped.includes(key))) {
       return `/logos/${filename}`;
     }
   }
