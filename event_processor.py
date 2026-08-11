@@ -14,6 +14,7 @@ def process_event(event: dict) -> dict:
         "player": event.get("player"),
         "team": event.get("team"),
         "opponent": event.get("opponent"),
+        "date": event.get("date"),
         "minute": event.get("minutes"),
         "score": event.get("score"),
         "xG": event.get("xG"),

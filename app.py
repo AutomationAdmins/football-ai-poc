@@ -36,6 +36,15 @@ from match_state_tracker import (
 
 _FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
 
+# ---------------------------------------------------------------------------
+# Pub/Sub deduplication — prevent re-delivery from inflating match state
+# ---------------------------------------------------------------------------
+_processed_events: dict[str, set[str]] = {}  # fixture_id -> set of event keys
+
+def _event_dedup_key(event: dict) -> str:
+    """Generate a unique key for Pub/Sub event deduplication."""
+    return f"{event.get('event_type', '')}:{event.get('minute', '')}:{event.get('player', '')}"
+
 app = FastAPI(title="Football AI Editorial Assistant")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -1030,8 +1039,10 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
                 "event_type": processed.get("event_type"),
                 "player": processed.get("player"),
                 "team": processed.get("team"),
+                "opponent": processed.get("opponent"),
                 "minute": processed.get("minute"),
                 "score": processed.get("score"),
+                "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
             })
@@ -1039,8 +1050,41 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
             print(f"All insights for {fixture_id} were duplicates - skipped writing")
     except Exception as e:
         import traceback
-        logger.error(f"Error generating insight for {fixture_id}: {e}")
+        logger.error(f"AI insight generation failed for {fixture_id}, falling back to broadcaster: {e}")
         traceback.print_exc()
+        # --- Fallback: broadcaster generator so the event is never lost ---
+        try:
+            match_state = editorial_ctx.get("match_state", {})
+            event_type = processed.get("event_type", "").upper()
+            broadcaster_lead = _broadcaster_lead(
+                event_type, processed.get("player"), processed.get("team"),
+                processed.get("opponent"), processed.get("score"), processed.get("minute"),
+                match_state, editorial_ctx, processed,
+            )
+            broadcaster_insights = _broadcaster_insights(
+                event_type, processed.get("player"), processed.get("team"),
+                processed.get("opponent"), processed.get("score"), processed.get("minute"),
+                match_state, editorial_ctx, {}, processed,
+            )
+            if not broadcaster_insights:
+                broadcaster_insights = [{"category": "match_context", "line": broadcaster_lead}]
+            weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
+            write_insight(fixture_id, {
+                "lead_story": _sanitize(broadcaster_lead),
+                "insights": [{**i, "line": _sanitize(i.get("line", ""))} for i in broadcaster_insights],
+                "event_type": event_type,
+                "player": processed.get("player"),
+                "team": processed.get("team"),
+                "opponent": processed.get("opponent"),
+                "minute": processed.get("minute"),
+                "score": processed.get("score"),
+                "date": processed.get("date"),
+                "editorial_weight": weight,
+                "league": processed.get("league"),
+            })
+            logger.info(f"Broadcaster fallback written for {fixture_id} | {event_type}")
+        except Exception as fallback_err:
+            logger.error(f"Broadcaster fallback also failed for {fixture_id}: {fallback_err}")
 
 @app.post("/pubsub/push")
 async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
@@ -1059,6 +1103,15 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
 
     if processed["status"] == "ignored":
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": processed["reason"]})
+
+    # Pub/Sub dedup — skip if we've already processed this exact event
+    dedup_key = _event_dedup_key(processed)
+    if fixture_id not in _processed_events:
+        _processed_events[fixture_id] = set()
+    if dedup_key in _processed_events[fixture_id]:
+        logger.info(f"Dedup: skipping {dedup_key} for {fixture_id}")
+        return JSONResponse(status_code=200, content={"status": "duplicate_ignored"})
+    _processed_events[fixture_id].add(dedup_key)
 
     # Layer 3 — pre-match stats from GCS (via sports_data which calls gcs_client)
     stats_context = get_context(processed)
@@ -1116,8 +1169,10 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
                 "event_type": event_type,
                 "player": None,
                 "team": processed.get("team"),
+                "opponent": processed.get("opponent"),
                 "minute": processed.get("minute"),
                 "score": processed.get("score"),
+                "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
             })
@@ -1155,8 +1210,10 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         "event_type": event_type,
         "player": processed.get("player"),
         "team": processed.get("team"),
+        "opponent": processed.get("opponent"),
         "minute": processed.get("minute"),
         "score": processed.get("score"),
+        "date": processed.get("date"),
         "editorial_weight": weight,
         "league": processed.get("league"),
     })
@@ -1241,12 +1298,12 @@ def historical_data_page(request: Request):
 
     params = dict(request.query_params)
     query = {
-        "player": params.get("player", ""),
-        "team": params.get("team", ""),
-        "opponent": params.get("opponent", ""),
-        "date": params.get("date", ""),
+        "player": params.get("player", "").replace("None", ""),
+        "team": params.get("team", "").replace("None", ""),
+        "opponent": params.get("opponent", "").replace("None", ""),
+        "date": params.get("date", "").replace("None", ""),
         "event_type": params.get("event_type", "GOAL"),
-        "fixture_id": params.get("fixture_id", ""),
+        "fixture_id": params.get("fixture_id", "").replace("None", ""),
     }
 
     enriched = None

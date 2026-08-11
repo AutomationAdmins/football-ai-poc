@@ -81,6 +81,16 @@ def _reshape_enriched(enriched: dict, event: dict) -> dict:
         player_data["latest_goal"] = enriched["player_goal_log_entry"]
     if enriched.get("player_assist_log_entry"):
         player_data["latest_assist"] = enriched["player_assist_log_entry"]
+    if enriched.get("player_minute_band"):
+        player_data["minute_band_context"] = enriched["player_minute_band"]
+    if enriched.get("player_home_away_splits"):
+        player_data["home_away_splits"] = enriched["player_home_away_splits"]
+    if enriched.get("player_vs_big6"):
+        player_data["vs_big6"] = enriched["player_vs_big6"]
+    if enriched.get("player_scoring_streak"):
+        player_data["scoring_streak"] = enriched["player_scoring_streak"]
+    if enriched.get("player_shot_conversion"):
+        player_data["shot_conversion"] = enriched["player_shot_conversion"]
     if player_data:
         player_data["league"] = league_name
         context["player_stats"] = {player_name: player_data}
@@ -91,6 +101,10 @@ def _reshape_enriched(enriched: dict, event: dict) -> dict:
         team_data.update(enriched["team_vs_opponent_record"])
     if enriched.get("team_league_history"):
         team_data.update(enriched["team_league_history"])
+    if enriched.get("team_recent_form"):
+        team_data["recent_form"] = enriched["team_recent_form"]
+    if enriched.get("team_scoring_streaks"):
+        team_data["scoring_streaks"] = enriched["team_scoring_streaks"]
     if team_data:
         team_data["league"] = league_name
         context["team_stats"] = {team_name: team_data}
@@ -128,6 +142,8 @@ def _reshape_enriched(enriched: dict, event: dict) -> dict:
         league_data["team_history"] = enriched["team_league_history"]
     if enriched.get("opponent_league_history"):
         league_data["opponent_history"] = enriched["opponent_league_history"]
+    if enriched.get("league_table"):
+        league_data["standings"] = enriched["league_table"]
     if league_data:
         context["league_stats"] = {league_name: league_data}
 

@@ -91,18 +91,38 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
   }
 
   useEffect(() => {
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let sseWorking = false;
+
+    // Try SSE first
     const es = new EventSource('/api/insights/stream');
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         const filtered = (Array.isArray(data) ? data : []).filter((i: InsightItem) => i.fixture_id === fixtureId);
         setInsights(filtered);
+        sseWorking = true;
       } catch {}
     };
     es.onerror = () => {
-      // EventSource auto-reconnects; no action needed
+      // If SSE fails, fall back to polling
+      if (!sseWorking && !pollTimer) {
+        pollTimer = setInterval(async () => {
+          try {
+            const response = await fetch('/api/insights', { cache: 'no-store' });
+            if (response.ok) {
+              const data = await response.json();
+              const filtered = (Array.isArray(data) ? data : []).filter((i: InsightItem) => i.fixture_id === fixtureId);
+              setInsights(filtered);
+            }
+          } catch {}
+        }, 5000);
+      }
     };
-    return () => es.close();
+    return () => {
+      es.close();
+      if (pollTimer) clearInterval(pollTimer);
+    };
   }, [fixtureId]);
 
   return (

@@ -388,7 +388,7 @@ EXAMPLE OUTPUT
 CONTEXT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{json.dumps(cleaned, indent=2)}
+{json.dumps(cleaned, indent=2, default=_json_safe)}
 
 Match History (events in this match before the current event)
 
