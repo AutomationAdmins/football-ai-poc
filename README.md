@@ -226,3 +226,5 @@ gcloud run deploy football-ai-poc \
   --allow-unauthenticated \
   --set-env-vars GROQ_API_KEY=your-key-here
 ```
+
+- checking
