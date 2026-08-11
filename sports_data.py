@@ -1,9 +1,12 @@
+"""
+Sports data adapter — retrieves enriched CSV context from GCS and reshapes it
+into the legacy format expected by editorial_context.py and prompt_builder.py.
+"""
+
 import copy
-import os
 
-from gcs_client import get_prematch_stats
-
-_FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
+from event_lookup import enrich_event
+from gcs_data_store import get_data_store
 
 # Maps event type to which player/team counters to increment by 1
 _PLAYER_INCREMENTS = {
@@ -19,39 +22,6 @@ _TEAM_INCREMENTS = {
 }
 
 
-def _load_stats() -> dict:
-    return get_prematch_stats(_FIXTURE_ID)
-
-
-def _matches_league(entity: dict, league: str | None) -> bool:
-    if not league:
-        return True
-    entity_league = entity.get("league")
-    return entity_league and entity_league.lower() == league.lower()
-
-
-def _find_fixture(stats: dict, league: str | None, team: str | None, opponent: str | None) -> str | None:
-    if not team or not opponent:
-        return None
-
-    league_lower = league.lower() if league else None
-    team_lower = team.lower()
-    opponent_lower = opponent.lower()
-
-    for fixture_name, fixture in stats.get("fixtures", {}).items():
-        if league_lower and fixture.get("competition", "").lower() != league_lower:
-            continue
-
-        home_team = fixture.get("home_team", "").lower()
-        away_team = fixture.get("away_team", "").lower()
-        teams = {home_team, away_team}
-        
-        if {team_lower, opponent_lower} == teams:
-            return fixture_name
-
-    return None
-
-
 def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
     """Returns a deep copy of context with counters incremented to reflect the current event."""
     updated = copy.deepcopy(context)
@@ -62,7 +32,7 @@ def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
             if field not in player_stats:
                 player_stats[field] = 0
             player_stats[field] += 1
-        
+
         # Add live event data (xG, position, build-up) to player context
         if event.get("xG") is not None:
             player_stats["xG_this_event"] = event["xG"]
@@ -77,7 +47,7 @@ def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
             if field not in team_stats:
                 team_stats[field] = 0
             team_stats[field] += 1
-        
+
         # Add team-level live stats
         if event.get("pass_accuracy") is not None:
             team_stats["pass_accuracy_this_event"] = event["pass_accuracy"]
@@ -87,43 +57,91 @@ def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
     return updated
 
 
-def _find_case_insensitive_key(data: dict, key: str | None) -> str | None:
-    if not key or not data:
-        return None
-    key_lower = key.lower()
-    for k in data.keys():
-        if k.lower() == key_lower:
-            return k
-    return None
+def _reshape_enriched(enriched: dict, event: dict) -> dict:
+    """
+    Reshape the output from enrich_event() into the legacy stats_context format:
+        {league_stats, fixture_stats, player_stats, team_stats, fixture_lookup}
+    """
+    context: dict = {}
+
+    player_name = event.get("player", "unknown")
+    team_name = event.get("team", "unknown")
+    opponent_name = event.get("opponent", "unknown")
+    league_name = event.get("league", "Premier League")
+
+    # ── Player stats ──
+    player_data: dict = {}
+    if enriched.get("player_season_stats"):
+        player_data.update(enriched["player_season_stats"])
+    if enriched.get("player_club_summary"):
+        player_data.update(enriched["player_club_summary"])
+    if enriched.get("player_vs_opponent"):
+        player_data["vs_opponent"] = enriched["player_vs_opponent"]
+    if enriched.get("player_goal_log_entry"):
+        player_data["latest_goal"] = enriched["player_goal_log_entry"]
+    if enriched.get("player_assist_log_entry"):
+        player_data["latest_assist"] = enriched["player_assist_log_entry"]
+    if player_data:
+        player_data["league"] = league_name
+        context["player_stats"] = {player_name: player_data}
+
+    # ── Team stats ──
+    team_data: dict = {}
+    if enriched.get("team_vs_opponent_record"):
+        team_data.update(enriched["team_vs_opponent_record"])
+    if enriched.get("team_league_history"):
+        team_data.update(enriched["team_league_history"])
+    if team_data:
+        team_data["league"] = league_name
+        context["team_stats"] = {team_name: team_data}
+
+    # ── Fixture stats ──
+    fixture_data: dict = {}
+    if enriched.get("match_details"):
+        fixture_data.update(enriched["match_details"])
+    fixture_data["home_team"] = team_name
+    fixture_data["away_team"] = opponent_name
+    fixture_data["competition"] = league_name
+
+    # Head-to-head
+    if enriched.get("head_to_head_matches"):
+        fixture_data["head_to_head"] = enriched["head_to_head_matches"]
+    if enriched.get("derby_fixture_leaders"):
+        fixture_data["derby_fixture_leaders"] = enriched["derby_fixture_leaders"]
+
+    # Fixture leaders
+    if enriched.get("fixture_leaders"):
+        fixture_data["fixture_leaders"] = enriched["fixture_leaders"]
+
+    # Derby events
+    if enriched.get("related_derby_events"):
+        fixture_data["is_derby"] = True
+        fixture_data["derby_events"] = enriched["related_derby_events"]
+
+    fixture_key = f"{team_name} vs {opponent_name}"
+    context["fixture_stats"] = {fixture_key: fixture_data}
+    context["fixture_lookup"] = {"selected_fixture": {"name": fixture_key}}
+
+    # ── League stats ──
+    league_data: dict = {}
+    if enriched.get("team_league_history"):
+        league_data["team_history"] = enriched["team_league_history"]
+    if enriched.get("opponent_league_history"):
+        league_data["opponent_history"] = enriched["opponent_league_history"]
+    if league_data:
+        context["league_stats"] = {league_name: league_data}
+
+    return context
 
 
 def get_context(event: dict) -> dict:
-    stats = _load_stats()
-    context = {}
+    """
+    Main entry point — called by app.py.
+    Enriches the event using CSV data from GCS and returns the legacy-shaped context.
+    """
+    store = get_data_store()
+    enriched = enrich_event(event, store)
+    context = _reshape_enriched(enriched, event)
 
-    league = event.get("league")
-    league_key = _find_case_insensitive_key(stats.get("leagues", {}), league)
-    
-    fixture = _find_fixture(stats, league, event.get("team"), event.get("opponent"))
-
-    if league_key:
-        context["league_stats"] = {league_key: stats["leagues"][league_key]}
-
-    if fixture and fixture in stats.get("fixtures", {}):
-        context["fixture_stats"] = {fixture: stats["fixtures"][fixture]}
-
-    player = event.get("player")
-    player_key = _find_case_insensitive_key(stats.get("players", {}), player)
-    if player_key and _matches_league(stats["players"][player_key], league):
-        context["player_stats"] = {player_key: stats["players"][player_key]}
-
-    team = event.get("team")
-    team_key = _find_case_insensitive_key(stats.get("teams", {}), team)
-    if team_key and _matches_league(stats["teams"][team_key], league):
-        context["team_stats"] = {team_key: stats["teams"][team_key]}
-
-    if fixture:
-        context["fixture_lookup"] = {"selected_fixture": {"name": fixture}}
-
-    # Increment counters to reflect the event that just happened
+    # Apply live event increments
     return _apply_increments(context, event.get("event_type", ""), event)

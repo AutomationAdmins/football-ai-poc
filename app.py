@@ -1184,3 +1184,51 @@ def clear_dashboard():
     db = _fs.Client(project=os.environ.get("GCP_PROJECT", "avid-invention-484506-g9"))
     clear_all(db)
     return {"status": "cleared", "message": "Insights archived to training_data and dashboard cleared."}
+
+
+# ---------------------------------------------------------------------------
+# Historical Data page — test what the GCS CSV enrichment retrieves
+# ---------------------------------------------------------------------------
+
+@app.get("/historical-data", response_class=HTMLResponse)
+def historical_data_page(request: Request):
+    """Render a test page showing enriched CSV data from GCS for a given event."""
+    from event_lookup import enrich_event
+    from gcs_data_store import get_data_store
+
+    params = dict(request.query_params)
+    query = {
+        "player": params.get("player", ""),
+        "team": params.get("team", ""),
+        "opponent": params.get("opponent", ""),
+        "date": params.get("date", ""),
+        "event_type": params.get("event_type", "GOAL"),
+        "fixture_id": params.get("fixture_id", ""),
+    }
+
+    enriched = None
+    raw_json = ""
+
+    # Only run lookup if at least one field is populated
+    if any([query["player"], query["team"], query["opponent"]]):
+        event = {
+            "event_type": query["event_type"],
+            "player": query["player"],
+            "team": query["team"],
+            "opponent": query["opponent"],
+            "date": query["date"],
+        }
+        try:
+            store = get_data_store()
+            enriched = enrich_event(event, store)
+            raw_json = json.dumps(enriched, indent=2, default=str, ensure_ascii=False)
+        except Exception as e:
+            import traceback
+            raw_json = f"ERROR: {e}\n\n{traceback.format_exc()}"
+
+    return templates.TemplateResponse("historical_data.html", {
+        "request": request,
+        "query": query,
+        "enriched": enriched,
+        "raw_json": raw_json,
+    })
