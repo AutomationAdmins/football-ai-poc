@@ -91,9 +91,19 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
   }
 
   useEffect(() => {
-    const interval = setInterval(() => refreshInsights(), 500);
-    return () => clearInterval(interval);
-  }, []);
+    const es = new EventSource('/api/insights/stream');
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const filtered = (Array.isArray(data) ? data : []).filter((i: InsightItem) => i.fixture_id === fixtureId);
+        setInsights(filtered);
+      } catch {}
+    };
+    es.onerror = () => {
+      // EventSource auto-reconnects; no action needed
+    };
+    return () => es.close();
+  }, [fixtureId]);
 
   return (
     <main className="shell">

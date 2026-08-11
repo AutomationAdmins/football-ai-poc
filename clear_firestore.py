@@ -78,9 +78,6 @@ def clear_all(db):
     print("Clearing 'match_log' collection...")
     delete_collection(db.collection("match_log"), 50)
     
-<<<<<<< HEAD
-    print("Done! Database is clean.")
-=======
     print("Clearing 'decisions' collection...")
     delete_collection(db.collection("decisions"), 50)
 
@@ -88,7 +85,6 @@ def clear_all(db):
     delete_collection(db.collection("training_data"), 50)
     
     print("Done! All data cleared.")
->>>>>>> baf73da (data)
 
 
 if __name__ == "__main__":

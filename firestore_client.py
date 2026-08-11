@@ -1,6 +1,9 @@
 import os
 import uuid
+import threading
+import asyncio
 from datetime import datetime, timezone
+from typing import Callable, Optional
 import logging
 
 from google.cloud import firestore
@@ -173,3 +176,70 @@ def get_used_insight_lines(fixture_id: str) -> set[str]:
     return used_lines
 
 
+# ---------------------------------------------------------------------------
+# Real-time listener for SSE — replaces polling
+# ---------------------------------------------------------------------------
+
+# Shared state for the latest snapshot, protected by a threading.Event so
+# SSE consumers can block until new data arrives.
+_latest_snapshot: list[dict] = []
+_snapshot_event = threading.Event()
+_snapshot_lock = threading.Lock()
+_listener_unsub: Optional[Callable] = None
+
+
+def _on_snapshot(col_snapshot, changes, read_time):
+    """Firestore on_snapshot callback — runs on a background thread."""
+    results: list[dict] = []
+    for doc in col_snapshot:
+        if "training_data" in doc.reference.path:
+            continue
+        payload = doc.to_dict()
+        if payload.get("status") == "pending":
+            results.append({"id": doc.id, **payload})
+    results.sort(
+        key=lambda x: x.get("created_at") or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    global _latest_snapshot
+    with _snapshot_lock:
+        _latest_snapshot = results
+    _snapshot_event.set()
+
+
+def start_insights_listener():
+    """Start a Firestore on_snapshot listener for all pending insights.
+    Safe to call multiple times — subsequent calls are no-ops."""
+    global _listener_unsub
+    if _listener_unsub is not None:
+        return  # already listening
+    if _firestore_disabled():
+        logger.info("Firestore disabled — skipping real-time listener")
+        return
+    db = _get_db()
+    query = db.collection_group("items")
+    _listener_unsub = query.on_snapshot(_on_snapshot)
+    logger.info("Firestore on_snapshot listener started for insights")
+
+
+def stop_insights_listener():
+    """Unsubscribe the real-time listener."""
+    global _listener_unsub
+    if _listener_unsub is not None:
+        _listener_unsub.unsubscribe()
+        _listener_unsub = None
+        logger.info("Firestore on_snapshot listener stopped")
+
+
+def wait_for_snapshot_update(timeout: float = 30.0) -> list[dict]:
+    """Block until a new snapshot arrives (or timeout). Returns the latest data."""
+    _snapshot_event.wait(timeout=timeout)
+    _snapshot_event.clear()
+    with _snapshot_lock:
+        return list(_latest_snapshot)
+
+
+def get_latest_snapshot() -> list[dict]:
+    """Return the most recent snapshot without blocking."""
+    with _snapshot_lock:
+        return list(_latest_snapshot)

@@ -22,6 +22,9 @@ from firestore_client import (
     write_insight,
     get_all_pending_insights,
     get_used_insight_lines,
+    start_insights_listener,
+    wait_for_snapshot_update,
+    get_latest_snapshot,
 )
 from match_state_tracker import (
     build_match_state,
@@ -1174,6 +1177,46 @@ def dashboard(request: Request):
 def api_insights():
     """JSON endpoint for the Next.js frontend to poll."""
     return get_all_pending_insights()
+
+
+@app.get("/api/insights/stream")
+async def api_insights_stream():
+    """SSE endpoint — pushes insights only when Firestore data changes."""
+    from fastapi.responses import StreamingResponse
+    import asyncio as _aio
+
+    start_insights_listener()
+
+    async def event_generator():
+        last_ids: set[str] = set()
+        while True:
+            data = await _aio.get_event_loop().run_in_executor(
+                None, wait_for_snapshot_update, 25.0
+            )
+            current_ids = {d.get("id", "") for d in data}
+            if current_ids != last_ids or not last_ids:
+                last_ids = current_ids
+                # Serialize datetime objects for JSON
+                import json
+                from datetime import datetime as _dt
+                def _ser(obj):
+                    if isinstance(obj, _dt):
+                        return obj.isoformat()
+                    raise TypeError(type(obj).__name__)
+                payload = json.dumps(data, default=_ser)
+                yield f"data: {payload}\n\n"
+            else:
+                yield ": heartbeat\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/clear")

@@ -138,8 +138,18 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
   }
 
   useEffect(() => {
-    const interval = setInterval(() => refreshInsights(), 500);
-    return () => clearInterval(interval);
+    const es = new EventSource('/api/insights/stream');
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setInsights(Array.isArray(data) ? data : []);
+        setLastUpdated(new Date().toLocaleTimeString());
+      } catch {}
+    };
+    es.onerror = () => {
+      // EventSource auto-reconnects; no action needed
+    };
+    return () => es.close();
   }, []);
 
   return (
