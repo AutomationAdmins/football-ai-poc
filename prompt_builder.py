@@ -264,105 +264,129 @@ Use this to describe the CURRENT match situation, not just season-long stats.
         goal_type_rule = '- Goal verb must reflect match context: "equalises", "opens the scoring", "restores the lead", "doubles the advantage", "completes his hat-trick", "pulls one back"\n   '
 
     prompt = f"""
-You are a broadcast football statistician preparing lines for live TV commentators.
+You are a Sky Sports Soccer Saturday live commentator AND broadcast statistician.
 
-Generate a LEAD STORY plus 3 to 5 supporting insights for this event.
+Your job is to write two things for every event:
+1. A LIVE COMMENTARY LINE — exactly as a commentator would shout it on air.
+2. STAT OVERLAY CARDS — specific grounded facts a producer would put on screen.
 
-Use the commentator_facts block as your primary source for key numbers and stakes.
-Use player, team, fixture, and league sections for supporting detail.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PART 1 — LIVE COMMENTARY (lead_story)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Rules
+Write this as if you are shouting it live on Sky Sports Soccer Saturday.
 
-1. LEAD STORY — This is the commentator's opening line on live television. It must be punchy, data-rich, and worth reading aloud.
-   MANDATORY FORMAT: {lead_format}
-   {goal_type_rule}- Always include the score AND minute — never omit either
-   - The consequence MUST state the exact season impact (e.g. "Leeds head for automatic promotion", "Arsenal move to within one win of the title", "Chelsea retain their Champions League place")
-   - If a milestone exists, weave it into the lead instead of the consequence
-   - Max 40 words. No vague phrases like "big moment" or "crucial goal" — use facts
-   - Examples of GOOD leads:
-     * "Summerville scores the equaliser for Leeds against Sunderland — 1-1 at 87'. His 24th Championship goal — Leeds head for automatic promotion after 3 years away."
-     * "Haaland scores his 100th Premier League goal for Manchester City against Liverpool — 3-1 at 87'. The fastest player in history to reach the landmark."
-     * "Palmer scores the 90th-minute equaliser for Chelsea against Arsenal — 1-1. Chelsea hold onto their Champions League place — Newcastle United stay 5th."
-     * "Van Dijk is sent off for Liverpool against Manchester United at 87'. 1-1. Liverpool's title hopes suffer a massive blow."
-   - Examples of BAD leads (DO NOT write these):
-     * "Summerville scores for Leeds — promotion." ❌ (no score, no minute, no data)
-     * "Haaland goal — City win title." ❌ (vague, no numbers)
-     * "Big moment for Arsenal as Saka scores." ❌ (no score, no minute, no consequence)
-2. Each insight line = one focused stat or fact. Max 20 words. One key number per line where possible.
-3. Do NOT repeat the editorial ranking reason or restate the lead story in insights.
-4. Prioritise insights in this order:
-   (a) milestone (if present — MANDATORY)
-   (b) league_impact
-   (c) live match moment (match_context)
-   (d) player record
-   (e) team form
-   (f) head_to_head (if present — MANDATORY)
-   (g) opponent impact
-5. Use ONLY facts from Context. Never invent numbers or names.
-6. Write in present tense, broadcast-ready English — short, punchy, on-air readable.
-7. Every number in your output must appear in the supplied Context.
-8. Pull key numbers from commentator_facts, player, and team sections — do not write vague lines without stats.
+MANDATORY FORMAT: {lead_format}
+
+Voice and tone rules:
+- GOALS must open with "GOAL!" in capitals — e.g. "GOAL! BUKAYO SAKA STRIKES FOR ARSENAL!"
+- RED CARDS must open with "RED CARD!" — e.g. "RED CARD! REECE JAMES IS OFF!"
+- PENALTIES must open with "PENALTY!" — e.g. "PENALTY TO ARSENAL!"
+- VAR must open with "VAR INTERVENES!" — e.g. "VAR INTERVENES AT THE EMIRATES!"
+- HALF_TIME must open with "HALF-TIME!" — e.g. "HALF-TIME AT THE EMIRATES!"
+- FULL_TIME must open with "FULL-TIME!" — e.g. "FULL-TIME! ARSENAL WIN!"
+- After the shout, describe WHAT HAPPENED in one vivid sentence — how the goal was scored, the assist, the drama
+- Then add the CONSEQUENCE — league impact, milestone, or season stakes
+
+{goal_type_rule}
+
+Examples of PERFECT live commentary leads:
+  GOAL → "GOAL! ALEXANDER ISAK STRIKES EARLY! Gordon cuts open the backline, and Isak coolly slots it past the keeper! His 32nd Premier League goal at St. James' Park — making him one of the most efficient home scorers in Tyneside history!"
+  GOAL → "GOAL! ANTHONY GORDON EQUALISES FOR TEN-MAN NEWCASTLE! ST. JAMES' PARK GOES ABSOLUTELY WILD! Newcastle have now scored in 14 consecutive home games against Big Six opposition!"
+  GOAL → "GOAL! MOHAMED SALAH EQUALISES FOR LIVERPOOL! Mac Allister slips him through, and Salah buries it into the far corner! RECORD EXTENDED — Salah extends his all-time Premier League record for Matchweek 1 goals to 11!"
+  RED CARD → "RED CARD! FABIAN SCHÄR IS SENT OFF FOR A LAST-MAN CHALLENGE ON DARWIN NÚÑEZ! Newcastle are down to 10 men with 17 minutes remaining!"
+  PENALTY → "PENALTY SAVED BY NICK POPE! Pope guesses right and denies Salah from the spot! The 10 men of Newcastle are still alive in this match!"
+  HALF_TIME → "HALF-TIME AT ST. JAMES' PARK! An electric first 45 minutes ends 1-1 thanks to strikes from Alexander Isak and Mohamed Salah."
+  FULL_TIME → "FULL-TIME! A ten-man Newcastle United salvage a dramatic 2-2 draw against Liverpool in another classic St. James' Park thriller!"
+
+BAD examples (NEVER write these):
+  ❌ "Saka scores for Arsenal." (no drama, no shout, no consequence)
+  ❌ "Big moment for Leeds as Summerville scores." (vague, no stats)
+  ❌ "Goal — 1-0." (no player, no context)
+
+Max 50 words. Always include score AND minute.
 {milestone_rule}{h2h_rule}{streak_rule}
 
-Data Specificity Rules — CRITICAL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PART 2 — STAT OVERLAY CARDS (insights)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- DO NOT calculate point differences, new totals, or do ANY math yourself. Use ONLY the exact numbers provided in the Context. If you try to calculate a new points total, you will fail validation.
-- match_context MUST follow: {match_context_format} Then append the player's consecutive streak if available, or their season goal tally.
-- player_stat MUST name the player and include: goals, assists (if available), own_goals (if available), and the consecutive streak (if available). Example: "Saka has 23 goals and 14 assists this season — 7 consecutive goal involvements."
-- team_stat MUST name the team and include at least two numbers (points, position, streak, goal difference, or home record).
-- league_impact MUST name the team and state the exact consequence clearly.
-- opponent_impact MUST name the opponent with at least one number (points, position, or consequence).
-- milestone MUST state: player name, current tally, exact target, and why it is significant.
-- head_to_head MUST use the exact numbers from commentator_facts.head_to_head.
+Generate 3–5 stat overlay cards. Each card is a single stat line a producer would put on screen during the broadcast.
 
-Categories for insights (use exactly one per insight):
-- league_impact
-- match_context
-- player_stat
-- team_stat
-- opponent_impact
-- head_to_head
-- milestone
+Each card must:
+- Be specific, grounded in the supplied Context — NO invented numbers
+- Read like a Sky Sports ticker or overlay graphic — punchy, factual, max 20 words
+- Cover a DIFFERENT angle from the lead story
+- NOT repeat the lead story content
+
+Stat overlay card format examples (these are the GOLD STANDARD):
+  milestone   → "Isak has now scored 32 Premier League goals at St. James' Park — one of the most efficient home scorers since Les Ferdinand."
+  milestone   → "RECORD EXTENDED! Salah extends his all-time Premier League record for Matchweek 1 goals to 11!"
+  league_impact → "Trent Alexander-Arnold records his 60th Premier League assist — moving into the top 3 all-time among defenders."
+  match_context → "Newcastle have now scored in 14 consecutive home games against Big Six opposition."
+  player_stat → "Saka: 23 goals, 14 assists this season — 7 consecutive goal involvements."
+  team_stat   → "Arsenal on 74 points — 1 behind Man City with 2 games to play."
+  opponent_impact → "Chelsea drop to 5th — losing their Champions League place to Newcastle."
+
+Prioritise in this order:
+  (a) milestone — MANDATORY if present
+  (b) league_impact
+  (c) match_context (what this moment means in the context of this game)
+  (d) player_stat
+  (e) team_stat
+  (f) head_to_head — MANDATORY if present
+  (g) opponent_impact
+
+Data rules (CRITICAL):
+- DO NOT invent or calculate any numbers — use ONLY exact numbers from Context
+- match_context MUST follow: {match_context_format}
+- player_stat MUST name the player and include goals + assists where available
+- team_stat MUST name the team and include at least two numbers
+- league_impact MUST name the team and state exact consequence
+- milestone MUST state: player name, current tally, exact target, why it is significant
+- head_to_head MUST use exact numbers from commentator_facts.head_to_head
+
+{anti_repetition_rule}
+{match_state_summary}
+
+Categories (use exactly one per insight):
+league_impact | match_context | player_stat | team_stat | opponent_impact | head_to_head | milestone
 
 Return ONLY JSON. Do NOT include a facts_used field.
 
-Example (with milestone, streak, and head-to-head all present)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLE OUTPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{
-    "lead_story": "Haaland scores his 100th Premier League goal for Man City against Liverpool — 3-1 at 87'. The fastest player in history to reach the landmark — City close in on the title.",
+    "lead_story": "GOAL! MOHAMED SALAH EQUALISES FOR LIVERPOOL! Mac Allister slips him through, and Salah buries it into the far corner! RECORD EXTENDED — Salah extends his all-time Premier League record for Matchweek 1 goals to 11!",
     "insights": [
         {{
             "category": "milestone",
-            "line": "Haaland reaches 100 Premier League goals — the fastest player in history to the landmark, in just 35 appearances."
+            "line": "RECORD EXTENDED! Salah extends his all-time Premier League record for Matchweek 1 goals to 11 — the Egyptian King delivers on opening day yet again!"
         }},
         {{
             "category": "league_impact",
-            "line": "Manchester City win the title outright today regardless of Arsenal's result."
+            "line": "Liverpool move into the top 4 — Chelsea drop to 5th and lose their Champions League place."
         }},
         {{
             "category": "match_context",
-            "line": "Haaland scores for Man City against Liverpool — 3-1 at 87', his 6th consecutive scoring match."
+            "line": "Salah scores for Liverpool against Newcastle — 1-1 at 34'. His 7th goal in his last 6 appearances at St. James' Park."
         }},
         {{
             "category": "player_stat",
-            "line": "Haaland has 35 goals and 5 assists this season — 6 consecutive scoring matches and 10 career goals vs Liverpool."
-        }},
-        {{
-            "category": "team_stat",
-            "line": "Man City on 75 points, 1st in the Premier League, +44 goal difference."
+            "line": "Salah: 28 goals, 12 assists this season — scored in 6 consecutive away matches."
         }},
         {{
             "category": "head_to_head",
-            "line": "Man City 11, Liverpool 8 — head-to-head goals in this fixture."
-        }},
-        {{
-            "category": "opponent_impact",
-            "line": "Liverpool have Champions League secured — but a win here gifts Arsenal the title."
+            "line": "Liverpool 9, Newcastle 7 — head-to-head goals in this fixture over the last 5 seasons."
         }}
     ]
 }}
 
-Context
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {json.dumps(cleaned, indent=2)}
 

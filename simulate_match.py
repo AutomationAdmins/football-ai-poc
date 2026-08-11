@@ -17,9 +17,11 @@ Available match keys:
 """
 
 import argparse
+import base64
 import json
 import subprocess
 import time
+import urllib.request
 
 _PROJECT = "avid-invention-484506-g9"
 _TOPIC = "opta-live-events"
@@ -496,7 +498,7 @@ MATCH_REGISTRY: dict[str, list[dict]] = {
 }
 
 
-def publish_event(fixture_id: str, event: dict) -> None:
+def publish_event_pubsub(fixture_id: str, event: dict) -> None:
     payload = {**event, "fixture_id": fixture_id}
     message = json.dumps(payload, separators=(",", ":"))
     result = subprocess.run(
@@ -519,8 +521,24 @@ def publish_event(fixture_id: str, event: dict) -> None:
     print(f"  Published [{event['event']}] at {event.get('minutes', '?')}' — {output}")
 
 
+def publish_event_local(fixture_id: str, event: dict, backend_url: str) -> None:
+    payload = {**event, "fixture_id": fixture_id}
+    encoded = base64.b64encode(json.dumps(payload).encode()).decode()
+    envelope = {"message": {"data": encoded}}
+    body = json.dumps(envelope).encode()
+    req = urllib.request.Request(
+        f"{backend_url}/pubsub/push",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.loads(resp.read().decode())
+    print(f"  Sent [{event['event']}] at {event.get('minutes', '?')}' — {result.get('status', 'ok')}")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Simulate a match by publishing events to Pub/Sub")
+    parser = argparse.ArgumentParser(description="Simulate a match by publishing events to Pub/Sub or local backend")
     parser.add_argument(
         "--match",
         choices=list(MATCH_REGISTRY.keys()),
@@ -533,19 +551,35 @@ def main() -> None:
         help="Override the Firestore/GCS fixture ID (default derived from --match)",
     )
     parser.add_argument("--delay", type=float, default=3.0, help="Seconds between events")
+    parser.add_argument(
+        "--local",
+        metavar="URL",
+        nargs="?",
+        const="http://127.0.0.1:8000",
+        default=None,
+        help="Send events directly to local backend instead of Pub/Sub (default: http://127.0.0.1:8000)",
+    )
     args = parser.parse_args()
 
     fixture_id = args.fixture_id or _DEFAULT_FIXTURE_IDS[args.match]
     events = MATCH_REGISTRY[args.match]
 
-    print(f"Simulating: {args.match}  →  fixture_id={fixture_id}")
-    print(f"Publishing {len(events)} events to projects/{_PROJECT}/topics/{_TOPIC}\n")
-
-    for i, event in enumerate(events, start=1):
-        print(f"[{i}/{len(events)}] ", end="")
-        publish_event(fixture_id, event)
-        if i < len(events):
-            time.sleep(args.delay)
+    if args.local:
+        print(f"Simulating: {args.match}  →  fixture_id={fixture_id}")
+        print(f"Sending {len(events)} events directly to {args.local}\n")
+        for i, event in enumerate(events, start=1):
+            print(f"[{i}/{len(events)}] ", end="", flush=True)
+            publish_event_local(fixture_id, event, args.local)
+            if i < len(events):
+                time.sleep(args.delay)
+    else:
+        print(f"Simulating: {args.match}  →  fixture_id={fixture_id}")
+        print(f"Publishing {len(events)} events to projects/{_PROJECT}/topics/{_TOPIC}\n")
+        for i, event in enumerate(events, start=1):
+            print(f"[{i}/{len(events)}] ", end="", flush=True)
+            publish_event_pubsub(fixture_id, event)
+            if i < len(events):
+                time.sleep(args.delay)
 
     print("\nSimulation complete.")
 

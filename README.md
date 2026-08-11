@@ -95,10 +95,9 @@ Open `http://localhost:8080`
 |--------|------|---------|
 | `GET` | `/health` | Basic health check |
 | `GET` | `/` | Main dashboard |
-| `GET` | `/stats` | Stats and context page |
+| `GET` | `/api/insights` | Return live insights for dashboard clients |
 | `POST` | `/event` | Submit the two live event inputs |
-| `POST` | `/approve/{event_index}/{insight_index}` | Mark one insight as approved |
-| `POST` | `/reject/{event_index}/{insight_index}` | Mark one insight as rejected |
+| `POST` | `/api/clear` | Archive and clear live insight data |
 
 ## Example `POST /event` Payload
 
@@ -226,5 +225,3 @@ gcloud run deploy football-ai-poc \
   --allow-unauthenticated \
   --set-env-vars GROQ_API_KEY=your-key-here
 ```
-
-- checking

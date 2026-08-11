@@ -73,7 +73,6 @@ function Badge({ label, type = 'light' }: { label: string; type?: 'light' | 'dar
 export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId: string; initialInsights: InsightItem[] }) {
   const [insights, setInsights] = useState<InsightItem[]>(initialInsights);
   const [isRefreshing, startRefresh] = useTransition();
-  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
 
   const items = [...insights].sort((a, b) => (b.minute || 0) - (a.minute || 0));
   const { home, away } = parseFixtureId(fixtureId);
@@ -95,21 +94,6 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
     const interval = setInterval(() => refreshInsights(), 500);
     return () => clearInterval(interval);
   }, []);
-
-  async function decide(insightId: string, action: 'approve' | 'reject') {
-    setPendingActionId(insightId);
-    try {
-      const response = await fetch(`/api/decide/${fixtureId}/${insightId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      if (!response.ok) throw new Error('Action failed');
-      setInsights((current) => current.filter((item) => item.id !== insightId));
-    } finally {
-      setPendingActionId(null);
-    }
-  }
 
   return (
     <main className="shell">
@@ -156,8 +140,6 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
       ) : (
         <div className="timeline">
           {items.map((item, index) => {
-            const isProcessing = pendingActionId === item.id;
-
             return (
               <article className="event-card" key={item.id}>
                 <div className="event-card__header">
@@ -185,23 +167,6 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
                       </li>
                     ))}
                   </ul>
-                </div>
-
-                <div className="event-card__actions">
-                  <button
-                    className="button button--approve"
-                    onClick={() => decide(item.id, 'approve')}
-                    disabled={isProcessing}
-                  >
-                    ✓ Approve
-                  </button>
-                  <button
-                    className="button button--reject"
-                    onClick={() => decide(item.id, 'reject')}
-                    disabled={isProcessing}
-                  >
-                    × Reject
-                  </button>
                 </div>
               </article>
             );

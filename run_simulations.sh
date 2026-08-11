@@ -27,9 +27,11 @@ if [ ${#MATCHES[@]} -eq 0 ]; then
     MATCHES=("arsenal-chelsea" "leeds-sunderland")
 fi
 
+BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8000}"
+
 echo "Starting simulations: ${MATCHES[*]}"
 for match in "${MATCHES[@]}"; do
-    python3 simulate_match.py --match "$match" --delay 4 &
+    python simulate_match.py --match "$match" --delay 4 --local "$BACKEND_URL" &
 done
 wait
 echo "All simulations complete."

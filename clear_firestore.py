@@ -80,9 +80,6 @@ def clear_all(db):
     print("Clearing 'match_log' collection...")
     delete_collection(db.collection("match_log"), 50)
     
-    print("Clearing 'decisions' collection...")
-    delete_collection(db.collection("decisions"), 50)
-    
     print("Done! Database is clean.")
 
 

@@ -38,7 +38,7 @@
 <div class="main-container">
 
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
-        <div class="section-header" style="margin:0">AI-GENERATED INSIGHTS — STATISTICIAN REVIEW</div>
+        <div class="section-header" style="margin:0">AI-GENERATED INSIGHTS</div>
         <div style="display:flex; gap:10px;">
             <button class="refresh-btn" style="background:#da3633;" onclick="clearDashboard(this)">🗑 Clear All</button>
             <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
@@ -69,10 +69,6 @@
                         {% endfor %}
                     </div>
                     
-                    <div style="margin-top: 20px; display:flex; gap:12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #21262d;">
-                        <button class="btn-ap" style="padding: 8px 18px; font-weight: bold; transition: all 0.2s;" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','approve',this)">✓ APPROVE</button>
-                        <button class="btn-rj" style="padding: 8px 18px; font-weight: bold; transition: all 0.2s;" onclick="decide('{{ insight.fixture_id }}','{{ insight.id }}','reject',this)">✗ REJECT</button>
-                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -89,12 +85,6 @@
     const now = new Date();
     document.getElementById('current-date').textContent = '📅 ' + now.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'});
 })();
-
-async function decide(fixtureId, insightId, action, btn) {
-    const endpoint = `/${action}/${fixtureId}/${insightId}`;
-    await fetch(endpoint, { method: 'POST' });
-    btn.parentElement.innerHTML = `<span style="color:${action==='approve'?'#3fb950':'#f85149'};font-weight:bold">${action.toUpperCase()}D</span>`;
-}
 
 async function clearDashboard(btn) {
     if (!confirm('This will archive all insights for training and clear the dashboard. Continue?')) return;
