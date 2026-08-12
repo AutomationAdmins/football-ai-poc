@@ -109,7 +109,16 @@ def write_insight(fixture_id: str, insight: dict) -> str:
     return ref.id
 
 
-def get_pending_insights(fixture_id: str) -> list[dict]:
+def clear_mem_insights():
+    """Clear in-memory insights store and notify SSE stream (local mode only)."""
+    global _mem_insights, _latest_snapshot
+    _mem_insights.clear()
+    with _snapshot_lock:
+        _latest_snapshot = []
+    _snapshot_event.set()
+
+
+
     """Return all pending insights for a fixture, newest first."""
     if _firestore_disabled():
         results = [i for i in _mem_insights if i.get("fixture_id") == fixture_id and i.get("status") == "pending"]
