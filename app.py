@@ -86,7 +86,7 @@ def _goal_opener(goal_type: str, xg: float | None, minute: int | None,
     """Pick an emotionally varied goal shout based on full match context."""
     late = (minute or 0) >= 85
     very_late = (minute or 0) >= 90
-    low_xg = xg is not None and xg < 0.10
+    low_xg = xg is not None and xg < 0.20
     high_xg = xg is not None and xg >= 0.70
     ten_men = len(red_cards) > 0
     h, a = (0, 0)
@@ -180,7 +180,7 @@ def _chance_desc(xg: float | None, x: float | None, pressure: int | None) -> str
     elif xg >= 0.40:
         phrases = ["a well-taken finish from inside the box", "a powerful strike from a good position",
                    "a composed slot into the corner", "good movement to create the angle and finish it"]
-    elif xg >= 0.15:
+    elif xg >= 0.20:
         phrases = ["a fine finish against the odds", "a low-probability chance — but he took it brilliantly",
                    "a speculative effort that found the corner"]
     else:
@@ -194,19 +194,25 @@ def _chance_desc(xg: float | None, x: float | None, pressure: int | None) -> str
 
 
 def _buildup_desc(build_up_players: list | None, player: str | None) -> str:
-    """Describe the build-up play."""
+    """Describe the build-up play — always starts with a capital letter."""
     if not build_up_players:
         return ""
     if len(build_up_players) == 1:
-        return f"{build_up_players[0]} picks out {player} with a perfectly weighted pass"
+        return random.choice([
+            f"{build_up_players[0]} picks out {player} with a perfectly weighted pass",
+            f"{build_up_players[0]} with a sublime ball through to {player}",
+            f"Great work from {build_up_players[0]} to tee up {player}",
+        ])
     elif len(build_up_players) == 2:
         templates = [
             f"{build_up_players[0]} and {build_up_players[1]} combine beautifully",
-            f"lovely link play between {build_up_players[0]} and {build_up_players[1]}",
+            f"Lovely link play between {build_up_players[0]} and {build_up_players[1]}",
             f"{build_up_players[0]} lays it off to {build_up_players[1]}, who finds {player}",
+            f"What a move! {build_up_players[0]} and {build_up_players[1]} tear them apart",
+            f"{build_up_players[0]} and {build_up_players[1]} — outstanding combination play",
         ]
         return random.choice(templates)
-    return f"a flowing move involving {', '.join(build_up_players[:-1])} and {build_up_players[-1]}"
+    return f"A flowing move involving {', '.join(build_up_players[:-1])} and {build_up_players[-1]}"
 
 
 def _match_narrative(goals_by_player: dict, red_cards: list, score: str | None,
@@ -272,22 +278,22 @@ def _broadcaster_lead(event_type: str, player: str | None, team: str | None,
 
         if player_goals_today >= 3:
             if buildup and chance:
-                lead = f"{opener} {buildup.capitalize()}, and {player.upper()} makes it three! {chance.capitalize()}. {score_str} at {min_str}!"
+                lead = f"{opener} {buildup}, and {player.upper()} makes it three! {chance[0].upper() + chance[1:]}. {score_str} at {min_str}!"
             elif buildup:
-                lead = f"{opener} {buildup.capitalize()}, and {player.upper()} completes the hat-trick! {score_str} at {min_str}!"
+                lead = f"{opener} {buildup}, and {player.upper()} completes the hat-trick! {score_str} at {min_str}!"
             else:
                 lead = f"{opener} {player.upper()} — {score_str} at {min_str} for {team}! Three goals in one game!"
         elif player_goals_today == 2:
             if buildup and chance:
-                lead = f"{opener} {buildup.capitalize()} — {chance}. {score_str} at {min_str}."
+                lead = f"{opener} {buildup} — {chance}. {score_str} at {min_str}."
             elif buildup:
-                lead = f"{opener} {buildup.capitalize()}, and {player.upper()} makes it two for {team}! {score_str} at {min_str}."
+                lead = f"{opener} {buildup}, and {player.upper()} makes it two for {team}! {score_str} at {min_str}."
             else:
                 lead = f"{opener} {score_str} at {min_str}. What an impact from {player}!"
         elif buildup and chance:
-            lead = f"{opener} {buildup.capitalize()} — {chance}. {score_str} at {min_str}."
+            lead = f"{opener} {buildup} — {chance}. {score_str} at {min_str}."
         elif buildup:
-            lead = f"{opener} {buildup.capitalize()}, and {player.upper()} finishes it off for {team}! {score_str} at {min_str}."
+            lead = f"{opener} {buildup}, and {player.upper()} finishes it off for {team}! {score_str} at {min_str}."
         elif chance:
             lead = f"{opener} {player.upper()} for {team} — {chance}. {score_str} at {min_str}."
         else:
@@ -301,7 +307,7 @@ def _broadcaster_lead(event_type: str, player: str | None, team: str | None,
 
     elif event_type == "RED_CARD":
         mins_left = 90 - (minute or 0)
-        if pressure and pressure >= 85:
+        if pressure and pressure >= 80:
             reason = random.choice([
                 "a desperate, reckless challenge",
                 "a horrific lunge — he had to go",
@@ -337,7 +343,7 @@ def _broadcaster_lead(event_type: str, player: str | None, team: str | None,
             f"COOL AS YOU LIKE FROM THE SPOT!",
         ])
         if buildup:
-            lead = f"{opener} {buildup.capitalize()} — and {player.upper()} steps up and tucks it away for {team}! {score_str} at {min_str}!"
+            lead = f"{opener} {buildup} — and {player.upper()} steps up and tucks it away for {team}! {score_str} at {min_str}!"
         else:
             lead = f"{opener} {player.upper()} for {team.upper()}! {score_str} at {min_str} against {opponent}!"
         if consequence:
@@ -456,54 +462,55 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         season_goals = player_ctx.get("season_goals")
         if season_goals:
             insights.append({"category": "milestone",
-                "line": f"HAT-TRICK for {player} — {player_goals_today} goals today, {season_goals} for the season. Unstoppable."})
+                "line": f"OH WHAT A HAT-TRICK! {player.upper()} HAS THREE TODAY — {season_goals} for the season now! Absolutely unstoppable!"})
         else:
             insights.append({"category": "milestone",
-                "line": f"HAT-TRICK! {player} has scored {player_goals_today} goals in this match — a stunning individual performance."})
+                "line": f"THE HAT-TRICK IS COMPLETE! {player} has been sensational — three goals in one match, what a performance!"})
     elif player and player_goals_today == 2:
         season_goals = player_ctx.get("season_goals")
         if season_goals:
             insights.append({"category": "milestone",
-                "line": f"BRACE for {player} — 2 goals today, {season_goals} for the season."})
+                "line": f"THE BRACE! {player.upper()} WITH TWO TODAY — that's {season_goals} for the season! He cannot stop scoring!"})
         else:
             insights.append({"category": "milestone",
-                "line": f"{player} with his second of the match — {team} in the ascendancy."})
+                "line": f"TWO GOALS! {player} is having the game of his life — {team} are absolutely in control now!"})
     else:
-        # Show career milestone progress when available
         career_goals = player_ctx.get("career_goals_at_club")
         goals_to_milestone = player_ctx.get("goals_to_next_milestone")
         next_milestone_label = player_ctx.get("next_milestone")
         if career_goals and goals_to_milestone is not None and next_milestone_label:
             target = career_goals + goals_to_milestone
             insights.append({"category": "milestone",
-                "line": f"{player}: {career_goals} career goals for {team} — just {goals_to_milestone} away from {target}."})
+                "line": f"THE MILESTONES ARE COMING! {career_goals} career goals for {team} — just {goals_to_milestone} away from {target}! History beckons for {player}!"})
 
     # --- LEAGUE IMPACT ---
     stakes_keys = ("stakes_line", "promotion_stakes", "promotion_consequence",
                    "champions_league_stakes", "title_race")
     stakes = next((facts.get(k) for k in stakes_keys if facts.get(k)), "")
     if stakes:
-        insights.append({"category": "league_impact", "line": stakes})
+        insights.append({"category": "league_impact", "line": f"THE STAKES COULDN'T BE HIGHER! {stakes}"})
 
     # --- HOW IT WAS SCORED: xG + build-up combined ---
     if event_type in ("GOAL", "PENALTY"):
         ctx_parts = []
         if xg is not None:
             if xg >= 0.75:
-                ctx_parts.append(f"xG {xg:.2f} — a high-quality chance and {player} made no mistake")
-            elif xg >= 0.3:
-                ctx_parts.append(f"xG {xg:.2f} — a decent opportunity taken well by {player}")
-            elif xg >= 0.1:
-                ctx_parts.append(f"xG just {xg:.2f} — not the easiest, but {player} converted against the odds")
+                ctx_parts.append(f"xG {xg:.2f} — he had to score from there and he did! Absolutely clinical from {player}!")
+            elif xg >= 0.40:
+                ctx_parts.append(f"xG {xg:.2f} — a great opportunity and {player} took it brilliantly! No hesitation whatsoever!")
+            elif xg >= 0.20:
+                ctx_parts.append(f"xG {xg:.2f} — not the easiest chance but {player} made it count! Great composure!")
+            elif xg >= 0.10:
+                ctx_parts.append(f"xG just {xg:.2f} — barely a chance on paper! {player} has conjured something out of nothing!")
             else:
-                ctx_parts.append(f"xG {xg:.2f} — barely a chance on paper, but what a finish from {player}!")
+                ctx_parts.append(f"xG only {xg:.2f} — that should NOT have gone in! What a sensational strike from {player}!")
         if build_up:
             if len(build_up) >= 2:
-                ctx_parts.append(f"Assisted by {build_up[0]} and {build_up[1]}")
+                ctx_parts.append(f"What a move that was — {build_up[0]} and {build_up[1]} tore the defence apart to set up {player}!")
             elif len(build_up) == 1:
-                ctx_parts.append(f"Assisted by {build_up[0]}")
+                ctx_parts.append(f"{build_up[0]} with the perfect assist — {player} was never going to miss that!")
         if ctx_parts:
-            insights.append({"category": "match_context", "line": ". ".join(ctx_parts) + "."})
+            insights.append({"category": "match_context", "line": " ".join(ctx_parts)})
 
     # --- RED CARD CONTEXT ---
     if event_type == "RED_CARD" and red_cards:
@@ -511,10 +518,10 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         mins_short = (minute or 0) - rc.get("minute", minute or 0)
         if mins_short > 0:
             insights.append({"category": "match_context",
-                "line": f"{rc.get('team')} have been a man short for {mins_short} minutes. {90 - (minute or 0)} left to play at {score}."})
-        if pressure and pressure >= 80:
+                "line": f"DOWN TO TEN MEN! {rc.get('team')} have been a man short for {mins_short} minutes — can they hold on? {90 - (minute or 0)} minutes left at {score}!"})
+        elif pressure and pressure >= 80:
             insights.append({"category": "match_context",
-                "line": f"Pressure index was at {pressure} when {player} made that challenge — desperate defending."})
+                "line": f"WHAT WAS HE THINKING?! Pressure index at {pressure} — that was desperate, reckless defending from {player}!"})
 
     # --- VS OPPONENT CAREER RECORD ---
     if player and opponent and event_type in ("GOAL", "PENALTY", "RED_CARD"):
@@ -524,10 +531,10 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         if career_vs_opp:
             if apps_vs_opp:
                 insights.append({"category": "player_stat",
-                    "line": f"{player} has scored {career_vs_opp} career goals in {apps_vs_opp} appearances against {opponent}."})
+                    "line": f"HE LOVES THIS FIXTURE! {career_vs_opp} career goals in {apps_vs_opp} appearances against {opponent} — {player} is absolutely lethal against this opposition!"})
             else:
                 insights.append({"category": "player_stat",
-                    "line": f"{career_vs_opp} career goals for {player} against {opponent}."})
+                    "line": f"WHAT A RECORD! {career_vs_opp} career goals for {player} against {opponent} — they just cannot stop him!"})
 
     # --- PLAYER SEASON STATS (from historical CSV only) ---
     if player and player_ctx and event_type in ("GOAL", "PENALTY"):
@@ -546,20 +553,26 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         if streak:
             streak_str = f"scoring in {streak} consecutive matches"
             if streak_goals:
-                streak_str += f" ({streak_goals} goals in that run)"
+                streak_str += f" — {streak_goals} goals in that incredible run"
             parts.append(streak_str)
         if parts:
+            opener = random.choice([
+                f"WHAT A SEASON {player.upper()} IS HAVING!",
+                f"THE NUMBERS DON'T LIE!",
+                f"JUST LOOK AT THOSE STATS!",
+                f"REMARKABLE FORM FROM {player.upper()}!",
+            ])
             insights.append({"category": "player_stat",
-                "line": f"{player}: {', '.join(parts)}."})
+                "line": f"{opener} {', '.join(parts)}."})
 
     # --- PASSING / CONTROL ---
     if pass_acc and event_type in ("GOAL", "HALF_TIME", "FULL_TIME"):
         if pass_acc >= 85:
             insights.append({"category": "team_stat",
-                "line": f"{team} passing at {pass_acc}% accuracy — completely controlling the tempo of this game."})
+                "line": f"TOTAL DOMINATION! {team} passing at {pass_acc}% accuracy — they are completely controlling this game!"})
         elif pass_acc <= 72:
             insights.append({"category": "team_stat",
-                "line": f"{team} struggling in possession — only {pass_acc}% pass accuracy so far, under real pressure."})
+                "line": f"STRUGGLING IN POSSESSION! Only {pass_acc}% pass accuracy for {team} — they are under enormous pressure right now!"})
 
     # --- TEAM STATS ---
     if team_ctx:
@@ -574,20 +587,26 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
             else:
                 pos_str = str(position)
             gd_str = f", GD {gd:+d}" if isinstance(gd, int) else ""
+            table_opener = random.choice([
+                f"THIS IS WHAT IT MEANS!",
+                f"THE TABLE TELLS THE STORY!",
+                f"LOOK WHERE THIS PUTS THEM!",
+            ])
             insights.append({"category": "team_stat",
-                "line": f"{team}: {points} pts, {pos_str} in the table{gd_str}."})
+                "line": f"{table_opener} {team}: {points} pts, {pos_str} in the table{gd_str}!"})
 
     # --- HEAD TO HEAD ---
     h2h = facts.get("head_to_head") or ""
     if h2h:
-        # Avoid double "Head-to-head: Head-to-head (..." prefix
         h2h_line = h2h if h2h.lower().startswith("head-to-head") else f"Head-to-head: {h2h}"
-        insights.append({"category": "head_to_head", "line": h2h_line})
+        insights.append({"category": "head_to_head",
+            "line": f"THE HISTORY BOOKS! {h2h_line} — and this result adds another chapter!"})
 
     # --- OPPONENT IMPACT ---
     opp_impact = facts.get("opponent_consequence") or facts.get("opponent_stakes") or ""
     if opp_impact:
-        insights.append({"category": "opponent_impact", "line": opp_impact})
+        insights.append({"category": "opponent_impact",
+            "line": f"AND WHAT DOES THIS MEAN FOR {opponent.upper() if opponent else 'THE OPPOSITION'}?! {opp_impact}"})
 
     return [i for i in insights if i.get("line")][:5]
 
