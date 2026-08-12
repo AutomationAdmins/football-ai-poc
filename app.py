@@ -718,6 +718,73 @@ def _ensure_player_stat_insight(insights: list[dict], editorial_ctx: dict, proce
     return insights + [{"category": "player_stat", "line": line, "facts_used": []}]
 
 
+import re as _re
+
+_CATEGORY_PRIORITY = {"milestone": 0, "match_context": 1, "league_impact": 2,
+                      "player_stat": 3, "team_stat": 4, "head_to_head": 5, "opponent_impact": 6, "tactical": 7}
+
+
+def _extract_facts(text: str) -> set[str]:
+    """Extract signature facts from a line — numbers, key phrases."""
+    facts: set[str] = set()
+    # All numbers (e.g. "31", "0.82", "78")
+    for n in _re.findall(r'\d+(?:\.\d+)?', text):
+        facts.add(n)
+    # Key narrative phrases
+    lower = text.lower()
+    for phrase in ("hat-trick", "hat trick", "brace", "equalise", "equaliser",
+                   "red card", "ten men", "comeback", "winner"):
+        if phrase in lower:
+            facts.add(phrase)
+    return facts
+
+
+def _deduplicate_insights(insights: list[dict], lead_story: str = "") -> list[dict]:
+    """Remove insights that repeat facts already covered by higher-priority cards or the lead story.
+
+    Logic:
+    - Sort by category priority (milestone first).
+    - Always keep the first (highest-priority) card.
+    - For subsequent cards, if 60%+ of their facts already appear in kept cards
+      or the lead_story, drop them — unless they have 2+ novel facts.
+    """
+    if len(insights) <= 1:
+        return insights
+
+    lead_facts = _extract_facts(lead_story) if lead_story else set()
+
+    # Sort by priority (lower = more important)
+    sorted_insights = sorted(insights, key=lambda i: _CATEGORY_PRIORITY.get(i.get("category", ""), 99))
+
+    # Always keep the first (most important) card
+    kept: list[dict] = [sorted_insights[0]]
+    seen_facts: set[str] = set(lead_facts) | _extract_facts(sorted_insights[0].get("line", ""))
+
+    for insight in sorted_insights[1:]:
+        line = insight.get("line", "")
+        facts = _extract_facts(line)
+        if not facts:
+            kept.append(insight)
+            continue
+
+        overlap = facts & seen_facts
+        overlap_ratio = len(overlap) / len(facts) if facts else 0
+
+        if overlap_ratio < 0.6:
+            kept.append(insight)
+            seen_facts.update(facts)
+        else:
+            novel = facts - seen_facts
+            if len(novel) >= 2:
+                kept.append(insight)
+                seen_facts.update(facts)
+
+    if not kept and insights:
+        kept = [sorted_insights[0]]
+
+    return kept
+
+
 def _compute_editorial_weight(event: dict, editorial_ctx: dict, match_state: dict = None) -> int:
     """
     Compute editorial importance weight for an event.
@@ -1126,6 +1193,8 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
 
         # Guarantee one player_stat line for player-driven moments (e.g., hat-tricks)
         filtered_insights = _ensure_player_stat_insight(filtered_insights, editorial_ctx, processed)
+        # Deduplicate — remove cards whose facts are already in higher-priority cards or lead
+        filtered_insights = _deduplicate_insights(filtered_insights, insight_result.get("lead_story", ""))
         
         # Only write if we have novel insights
         if filtered_insights:
@@ -1317,6 +1386,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     filtered = _ensure_player_stat_insight(filtered, editorial_ctx, processed)
     clean_lead = _sanitize(broadcaster_lead)
     clean_insights = [{**i, "line": _sanitize(i.get("line", ""))} for i in filtered]
+    clean_insights = _deduplicate_insights(clean_insights, clean_lead)
     weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
     insight_payload = {
         "lead_story": clean_lead,
@@ -1338,12 +1408,6 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     }
     # Write broadcaster output immediately (instant)
     write_insight(fixture_id, insight_payload)
-
-    # Optionally enrich with Gemini AI in background (non-blocking)
-    if ai_available and not local_mode:
-        prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
-        allowed_facts = flatten_for_grounding(editorial_ctx)
-        background_tasks.add_task(generate_and_save_insight, fixture_id, processed, prompt, allowed_facts, editorial_ctx)
 
     return JSONResponse(status_code=200, content={"status": "broadcaster_generated"})
 
