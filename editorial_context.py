@@ -1,6 +1,27 @@
 from copy import deepcopy
+import unicodedata
 
 _GOAL_LIKE_EVENTS = {"GOAL", "PENALTY", "OWN_GOAL"}
+
+_TEAM_ALIASES = {
+    "manchester united": ["manchester utd", "man united", "man utd"],
+    "manchester utd": ["manchester united", "man united", "man utd"],
+    "manchester city": ["man city"],
+    "man city": ["manchester city"],
+}
+
+
+def normalize_name(name: str) -> str:
+    if not name:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", name)
+    stripped = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return stripped.strip().lower()
+
+
+def _get_aliases(team_name: str) -> list:
+    return _TEAM_ALIASES.get(normalize_name(team_name), [])
+
 
 def build_live_match_context(event: dict) -> dict:
     """
@@ -235,6 +256,48 @@ def build_commentator_facts(
     if fixture.get("promotion_consequence"):
         facts["promotion_consequence"] = fixture["promotion_consequence"]
 
+    # Generic head-to-head from match history
+    h2h_matches = fixture.get("head_to_head")
+    if h2h_matches and isinstance(h2h_matches, list) and len(h2h_matches) > 0:
+        home = fixture.get("home_team", "Home")
+        away = fixture.get("away_team", "Away")
+        home_wins = 0
+        away_wins = 0
+        draws = 0
+        for match in h2h_matches:
+            score_raw = match.get("Score", "")
+            h_team = match.get("Home", "")
+            # Try to parse score like "2–0" or "2-0"
+            try:
+                parts = score_raw.replace("–", "-").split("-")
+                if len(parts) == 2:
+                    h_goals = int(parts[0].strip())
+                    a_goals = int(parts[1].strip())
+                    if h_goals > a_goals:
+                        # Home team in that match won
+                        if normalize_name(h_team) == normalize_name(home) or \
+                           normalize_name(h_team) in [normalize_name(a) for a in _get_aliases(home)]:
+                            home_wins += 1
+                        else:
+                            away_wins += 1
+                    elif a_goals > h_goals:
+                        if normalize_name(h_team) == normalize_name(home) or \
+                           normalize_name(h_team) in [normalize_name(a) for a in _get_aliases(home)]:
+                            away_wins += 1
+                        else:
+                            home_wins += 1
+                    else:
+                        draws += 1
+            except (ValueError, AttributeError):
+                continue
+        total = home_wins + away_wins + draws
+        if total > 0:
+            facts["head_to_head"] = (
+                f"Head-to-head ({total} meetings): {home} {home_wins}W, "
+                f"Draws {draws}, {away} {away_wins}W"
+            )
+
+    # Legacy hardcoded h2h (kept for backward compatibility)
     h2h_leeds = fixture.get("head_to_head_goals_leeds")
     h2h_sunderland = fixture.get("head_to_head_goals_sunderland")
     if h2h_leeds is not None and h2h_sunderland is not None:

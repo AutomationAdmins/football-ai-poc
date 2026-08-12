@@ -138,8 +138,18 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
   }
 
   useEffect(() => {
-    const interval = setInterval(() => refreshInsights(), 500);
-    return () => clearInterval(interval);
+    const es = new EventSource('/api/insights/stream');
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setInsights(Array.isArray(data) ? data : []);
+        setLastUpdated(new Date().toLocaleTimeString());
+      } catch {}
+    };
+    es.onerror = () => {
+      // EventSource auto-reconnects; no action needed
+    };
+    return () => es.close();
   }, []);
 
   return (
@@ -174,7 +184,7 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
         <section className="lead-story-banner" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #ef4444', borderRadius: '12px', padding: '20px 24px', marginBottom: '24px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
             <span style={{ background: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lead Story</span>
-            <span style={{ color: '#64748b', fontSize: '0.8rem', fontWeight: 500 }}>{leadStory.minute}&apos; — {formatEventType(leadStory.event_type)}</span>
+            <span style={{ color: '#64748b', fontSize: '0.8rem', fontWeight: 500 }}>{leadStory.minute}&apos; &mdash; {formatEventType(leadStory.event_type)}</span>
           </div>
           <p style={{ color: '#0f172a', fontSize: '1.2rem', fontWeight: 700, margin: 0, lineHeight: 1.4 }}>
             {leadStory.lead_story}
@@ -184,6 +194,54 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
           </p>
         </section>
       )}
+
+      {/* Live Commentary Feed — all events across all matches, newest on top */}
+      {insights.length > 0 && (() => {
+        const allEvents = [...insights].sort((a, b) => (b.minute || 0) - (a.minute || 0));
+        return (
+          <section style={{ marginBottom: '32px' }}>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 700, marginBottom: '12px' }}>
+              Live Commentary
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {allEvents.map((item, index) => {
+                const num = allEvents.length - index;
+                const isLatest = index === 0;
+                const fixtureParts = item.fixture_id.split('-vs-');
+                const matchLabel = fixtureParts.length === 2
+                  ? `${fixtureParts[0].replace(/-/g,' ')} vs ${fixtureParts[1].replace(/-\d{4}.*/,'').replace(/-/g,' ')}`
+                  : item.fixture_id;
+                return (
+                  <div key={`feed-${item.id}`} style={{
+                    background: isLatest ? '#003791' : '#ffffff',
+                    border: `1px solid ${isLatest ? '#003791' : '#e2e8f0'}`,
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    gap: '12px',
+                    alignItems: 'flex-start',
+                    boxShadow: isLatest ? '0 4px 12px rgba(0,55,145,0.2)' : 'none',
+                  }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: isLatest ? '#93c5fd' : '#94a3b8', minWidth: '30px', paddingTop: '2px' }}>
+                      #{num}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.7rem', color: isLatest ? '#93c5fd' : '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px' }}>
+                        {item.minute}&apos; &middot; {(item.event_type ?? 'EVENT').replace(/_/g, ' ')}
+                        {item.score ? ` \u00b7 ${item.score}` : ''}
+                        {' \u00b7 '}{matchLabel}
+                      </div>
+                      <div style={{ fontWeight: 600, lineHeight: 1.5, color: isLatest ? '#ffffff' : '#0f172a', fontSize: '0.9rem', wordWrap: 'break-word', whiteSpace: 'normal' }}>
+                        {item.lead_story ?? 'Generating...'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Score Cards Grid */}
       <section>

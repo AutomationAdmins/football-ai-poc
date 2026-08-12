@@ -48,6 +48,8 @@ REQUIRED_FILES=(
     "ai_engine.py"
     "event_processor.py"
     "gcs_client.py"
+    "gcs_data_store.py"
+    "event_lookup.py"
     "requirements.txt"
     "Dockerfile"
 )

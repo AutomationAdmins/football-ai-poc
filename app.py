@@ -21,8 +21,10 @@ from firestore_client import (
     get_match_history,
     write_insight,
     get_all_pending_insights,
-    record_decision,
     get_used_insight_lines,
+    start_insights_listener,
+    wait_for_snapshot_update,
+    get_latest_snapshot,
 )
 from match_state_tracker import (
     build_match_state,
@@ -33,6 +35,15 @@ from match_state_tracker import (
 )
 
 _FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
+
+# ---------------------------------------------------------------------------
+# Pub/Sub deduplication — prevent re-delivery from inflating match state
+# ---------------------------------------------------------------------------
+_processed_events: dict[str, set[str]] = {}  # fixture_id -> set of event keys
+
+def _event_dedup_key(event: dict) -> str:
+    """Generate a unique key for Pub/Sub event deduplication."""
+    return f"{event.get('event_type', '')}:{event.get('minute', '')}:{event.get('player', '')}"
 
 app = FastAPI(title="Football AI Editorial Assistant")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -48,6 +59,537 @@ def health():
 # ---------------------------------------------------------------------------
 
 from fastapi import BackgroundTasks
+import random
+
+
+def _sanitize(text: str) -> str:
+    """Strip non-ASCII problematic Unicode that renders as garbled characters in some browsers."""
+    return (text
+        .replace('\u2014', ' - ')   # em dash
+        .replace('\u2013', ' - ')   # en dash
+        .replace('\u2019', "'")     # right single quote
+        .replace('\u2018', "'")     # left single quote
+        .replace('\u201c', '"')     # left double quote
+        .replace('\u201d', '"')     # right double quote
+        .replace('\u2026', '...')   # ellipsis
+    )
+
+
+# ---------------------------------------------------------------------------
+# Broadcaster-quality commentary generator — context-driven, not templated
+# ---------------------------------------------------------------------------
+
+def _goal_opener(goal_type: str, xg: float | None, minute: int | None,
+                  player: str, team: str, opponent: str,
+                  player_goals_today: int, score: str | None,
+                  red_cards: list) -> str:
+    """Pick an emotionally varied goal shout based on full match context."""
+    late = (minute or 0) >= 85
+    very_late = (minute or 0) >= 90
+    low_xg = xg is not None and xg < 0.10
+    high_xg = xg is not None and xg >= 0.70
+    ten_men = len(red_cards) > 0
+    h, a = (0, 0)
+    if score and "-" in score:
+        try:
+            h, a = map(int, score.split("-"))
+        except ValueError:
+            pass
+    comeback = (goal_type == "equaliser" and (h + a) > 2)
+    dramatic_winner = (goal_type == "go_ahead_goal" and late)
+
+    if player_goals_today >= 3:
+        return random.choice([
+            f"UNBELIEVABLE! THE HAT-TRICK IS COMPLETE!",
+            f"OH MY! THAT IS THREE! THE HAT-TRICK FOR {player.upper()}!",
+            f"WOW! WOW! WOW! {player.upper()} HAS HIS HAT-TRICK!",
+            f"INCREDIBLE! THREE GOALS FOR {player.upper()} TODAY!",
+        ])
+    if player_goals_today == 2:
+        return random.choice([
+            f"OH YES! THE BRACE FOR {player.upper()}!",
+            f"HE'S DONE IT AGAIN! THAT'S TWO FOR {player.upper()}!",
+            f"SUPERB! {player.upper()} WITH HIS SECOND OF THE AFTERNOON!",
+        ])
+    if ten_men and goal_type == "equaliser":
+        return random.choice([
+            f"EXTRAORDINARY! THE TEN MEN EQUALISE!",
+            f"OH MY GOODNESS! THEY'VE DONE IT WITH TEN MEN!",
+            f"WHAT HEART! {team.upper()} LEVEL IT WITH A MAN DOWN!",
+        ])
+    if very_late and goal_type == "equaliser":
+        return random.choice([
+            f"AT THE DEATH! CAN YOU BELIEVE IT!",
+            f"OH NO! OH NO! THEY'VE EQUALISED IN STOPPAGE TIME!",
+            f"LAST GASP! THE COMEBACK IS COMPLETE!",
+        ])
+    if late and dramatic_winner:
+        return random.choice([
+            f"YESSS! A LATE, LATE WINNER!",
+            f"OH WHAT A MOMENT! THE WINNER IN THE DYING MINUTES!",
+            f"DRAMA! DRAMA! DRAMA! {player.upper()} WINS IT LATE!",
+        ])
+    if comeback:
+        return random.choice([
+            f"THEY'RE LEVEL! THE COMEBACK IS ON!",
+            f"OH WOW! {team.upper()} PULL LEVEL! WHAT A GAME!",
+            f"UNREAL! THEY'VE EQUALISED! THE CROWD ARE ON THEIR FEET!",
+        ])
+    if low_xg:
+        return random.choice([
+            f"OH WHAT A GOAL! WHERE DID THAT COME FROM!",
+            f"SENSATIONAL! ABSOLUTELY SENSATIONAL FROM {player.upper()}!",
+            f"WOW! FROM NOWHERE — AND IT'S IN THE NET!",
+            f"STUNNING! NOBODY EXPECTED THAT!",
+        ])
+    if high_xg and goal_type == "go_ahead_goal":
+        return random.choice([
+            f"AND THEY'VE TAKEN THE LEAD!",
+            f"CLINICAL! ABSOLUTELY CLINICAL FINISH!",
+            f"YES! {player.upper()} MAKES IT COUNT!",
+        ])
+    if goal_type == "equaliser":
+        return random.choice([
+            f"OH YES! {team.upper()} ARE LEVEL!",
+            f"BACK IN IT! {player.upper()} DRAGS THEM BACK INTO THIS!",
+            f"THE EQUALISER! WHAT A RESPONSE FROM {team.upper()}!",
+        ])
+    if goal_type == "go_ahead_goal":
+        return random.choice([
+            f"THE LEAD! {team.upper()} GO IN FRONT!",
+            f"OH THAT'S BRILLIANT! {player.upper()} PUTS THEM AHEAD!",
+            f"YESSS! {team.upper()} HAVE THE LEAD NOW!",
+        ])
+    # Default varied goal openers
+    return random.choice([
+        f"GOAL! OH WHAT A FINISH!",
+        f"IN THE NET! {player.upper()} SCORES!",
+        f"YES! {player.upper()} PUTS {team.upper()} AHEAD!",
+        f"GOAL! LOVELY MOVE AND {player.upper()} CONVERTS!",
+        f"OH THAT IS BEAUTIFUL FROM {player.upper()}!",
+    ])
+
+
+def _chance_desc(xg: float | None, x: float | None, pressure: int | None) -> str:
+    """Describe how the goal was scored using xG, shot location and pressure."""
+    if xg is None:
+        return ""
+    if xg >= 0.75:
+        phrases = ["a clinical finish from close range", "a composed finish — couldn't miss from there",
+                   "virtually an open goal and he doesn't waste it", "a tap-in — the keeper had no chance"]
+    elif xg >= 0.40:
+        phrases = ["a well-taken finish from inside the box", "a powerful strike from a good position",
+                   "a composed slot into the corner", "good movement to create the angle and finish it"]
+    elif xg >= 0.15:
+        phrases = ["a fine finish against the odds", "a low-probability chance — but he took it brilliantly",
+                   "a speculative effort that found the corner"]
+    else:
+        phrases = ["an absolute rocket — nobody saw that coming!",
+                   "a stunning strike from distance — the keeper was rooted to the spot!",
+                   "from virtually nothing — a moment of individual brilliance!"]
+    desc = random.choice(phrases)
+    if pressure and pressure >= 80 and xg and xg < 0.4:
+        desc += " — under enormous pressure!"
+    return desc
+
+
+def _buildup_desc(build_up_players: list | None, player: str | None) -> str:
+    """Describe the build-up play."""
+    if not build_up_players:
+        return ""
+    if len(build_up_players) == 1:
+        return f"{build_up_players[0]} picks out {player} with a perfectly weighted pass"
+    elif len(build_up_players) == 2:
+        templates = [
+            f"{build_up_players[0]} and {build_up_players[1]} combine beautifully",
+            f"lovely link play between {build_up_players[0]} and {build_up_players[1]}",
+            f"{build_up_players[0]} lays it off to {build_up_players[1]}, who finds {player}",
+        ]
+        return random.choice(templates)
+    return f"a flowing move involving {', '.join(build_up_players[:-1])} and {build_up_players[-1]}"
+
+
+def _match_narrative(goals_by_player: dict, red_cards: list, score: str | None,
+                      team: str, opponent: str, minute: int | None) -> str:
+    """Generate a sentence about the current match situation."""
+    h, a = (0, 0)
+    if score and "-" in score:
+        try:
+            h, a = map(int, score.split("-"))
+        except ValueError:
+            pass
+    total_goals = h + a
+    min_val = minute or 0
+    narratives = []
+    if total_goals >= 4:
+        narratives.append(f"What a game this has been — {total_goals} goals already in this clash!")
+    if red_cards:
+        rc = red_cards[-1]
+        mins_short = min_val - rc.get("minute", min_val)
+        if mins_short > 0:
+            narratives.append(f"{rc.get('team')} have been playing with ten men for {mins_short} minutes now.")
+    if h == a and total_goals > 0 and min_val >= 80:
+        narratives.append(f"Neither side able to find a winner — drama still possible with {90 - min_val} minutes left.")
+    if narratives:
+        return random.choice(narratives)
+    return ""
+
+
+def _broadcaster_lead(event_type: str, player: str | None, team: str | None,
+                       opponent: str | None, score: str | None, minute: int | None,
+                       match_state: dict, editorial_ctx: dict,
+                       processed: dict | None = None) -> str:
+    """Generate a Sky Sports live commentary lead — fully context-driven."""
+    processed = processed or {}
+    goals_by_player = (match_state or {}).get("goals_by_player", {})
+    red_cards = (match_state or {}).get("red_cards", [])
+    player_goals_today = goals_by_player.get(player, 0) if player else 0
+    score_str = score or ""
+    min_str = f"{minute}'" if minute else ""
+    facts = ((editorial_ctx or {}).get("commentator_facts") or {})
+    player_ctx = ((editorial_ctx or {}).get("player") or {})
+    goal_type = facts.get("goal_type", "")
+
+    # xG, build-up, pressure from raw event
+    xg = processed.get("xG")
+    build_up = processed.get("build_up_players") or []
+    pressure = processed.get("pressure_index")
+    x = processed.get("x")
+
+    # Stakes consequence
+    stakes_keys = ("promotion_stakes", "stakes_line", "promotion_consequence",
+                   "champions_league_stakes", "title_race")
+    consequence = next((facts.get(k) for k in stakes_keys if facts.get(k)), "")
+
+    # Season milestone note
+    notes = player_ctx.get("notes") or player_ctx.get("next_milestone") or ""
+
+    if event_type == "GOAL":
+        chance = _chance_desc(xg, x, pressure)
+        buildup = _buildup_desc(build_up, player)
+        opener = _goal_opener(goal_type, xg, minute, player or "", team or "",
+                              opponent or "", player_goals_today, score_str, red_cards)
+
+        if player_goals_today >= 3:
+            if buildup and chance:
+                lead = f"{opener} {buildup.capitalize()}, and {player.upper()} makes it three! {chance.capitalize()}. {score_str} at {min_str}!"
+            elif buildup:
+                lead = f"{opener} {buildup.capitalize()}, and {player.upper()} completes the hat-trick! {score_str} at {min_str}!"
+            else:
+                lead = f"{opener} {player.upper()} — {score_str} at {min_str} for {team}! Three goals in one game!"
+        elif player_goals_today == 2:
+            if buildup and chance:
+                lead = f"{opener} {buildup.capitalize()} — {chance}. {score_str} at {min_str}."
+            elif buildup:
+                lead = f"{opener} {buildup.capitalize()}, and {player.upper()} makes it two for {team}! {score_str} at {min_str}."
+            else:
+                lead = f"{opener} {score_str} at {min_str}. What an impact from {player}!"
+        elif buildup and chance:
+            lead = f"{opener} {buildup.capitalize()} — {chance}. {score_str} at {min_str}."
+        elif buildup:
+            lead = f"{opener} {buildup.capitalize()}, and {player.upper()} finishes it off for {team}! {score_str} at {min_str}."
+        elif chance:
+            lead = f"{opener} {player.upper()} for {team} — {chance}. {score_str} at {min_str}."
+        else:
+            lead = f"{opener} {player.upper()} for {team} — {score_str} at {min_str} against {opponent}!"
+
+        if notes and any(c.isdigit() for c in str(notes)):
+            lead += f" {notes}"
+        elif consequence:
+            lead += f" {consequence}."
+        return lead
+
+    elif event_type == "RED_CARD":
+        mins_left = 90 - (minute or 0)
+        if pressure and pressure >= 85:
+            reason = random.choice([
+                "a desperate, reckless challenge",
+                "a horrific lunge — he had to go",
+                "a last-man foul — no choice for the referee",
+            ])
+            opener = random.choice([
+                f"OH NO! RED CARD!",
+                f"OFF HE GOES! RED CARD!",
+                f"HE'S GONE! THE REFEREE HAS NO CHOICE!",
+            ])
+            lead = f"{opener} {player.upper()} — {reason}! {team} are down to ten men at {min_str}. {score_str}."
+        else:
+            opener = random.choice([
+                f"RED CARD! OH DEAR!",
+                f"OFF! {player.upper()} IS OFF!",
+                f"THE RED CARD COMES OUT!",
+            ])
+            lead = f"{opener} {player.upper()} is sent off — {team} with ten men against {opponent} at {min_str}. {score_str}."
+        if mins_left > 0:
+            drama = random.choice([
+                f" {mins_left} long minutes to hold on.",
+                f" Can {team} hang on with ten men?",
+                f" What a mountain to climb for {team} now.",
+            ])
+            lead += drama
+        return lead
+
+    elif event_type == "PENALTY":
+        buildup = _buildup_desc(build_up, player) if build_up else ""
+        opener = random.choice([
+            f"PENALTY CONVERTED!",
+            f"HE SENDS THE KEEPER THE WRONG WAY!",
+            f"COOL AS YOU LIKE FROM THE SPOT!",
+        ])
+        if buildup:
+            lead = f"{opener} {buildup.capitalize()} — and {player.upper()} steps up and tucks it away for {team}! {score_str} at {min_str}!"
+        else:
+            lead = f"{opener} {player.upper()} for {team.upper()}! {score_str} at {min_str} against {opponent}!"
+        if consequence:
+            lead += f" {consequence}."
+        return lead
+
+    elif event_type == "OWN_GOAL":
+        return random.choice([
+            f"OH NO! OWN GOAL! {player.upper()} turns it into his own net — {team} are gifted the goal! {score_str} at {min_str}!",
+            f"OH DEAR! WHAT MISFORTUNE! The ball goes in off {player.upper()}! {score_str} at {min_str} — a cruel moment.",
+            f"OOH! {player.upper()} won't want to see that again — into his own net! {score_str} at {min_str}. Dreadful luck.",
+        ])
+
+    elif event_type == "VAR_DECISION":
+        return random.choice([
+            f"HOLD ON — VAR IS CHECKING THIS! The stadium falls silent at {min_str} in {team} vs {opponent}, {score_str}. The referee is heading to the monitor...",
+            f"OH! IT'S GOING TO VAR! Controversy at {min_str} — {score_str}. The officials are reviewing the incident now.",
+            f"WAIT — IS THIS BEING CHECKED? VAR intervenes at {min_str}. {team} vs {opponent}, {score_str}. Nerves all round.",
+        ])
+
+    elif event_type == "HALF_TIME":
+        h, a = (score_str.split("-") if score_str and "-" in score_str else ("0", "0"))
+        h_i, a_i = int(h), int(a)
+        goals_list = [(p, g) for p, g in goals_by_player.items() if g >= 1]
+        scorers_str = ""
+        if goals_list:
+            scorers_str = " — goals from " + " and ".join(f"{p} ({g})" if g > 1 else p for p, g in goals_list[:3])
+        if h_i == a_i == 0:
+            opts = [
+                f"A tight, cagey first half — nothing to separate {team} and {opponent}. Goalless at the break.",
+                f"A battle in midfield — both sides cancelling each other out. No goals yet, but plenty to talk about.",
+            ]
+        elif h_i == a_i:
+            opts = [
+                f"What a first half! End to end stuff — {score_str} at the break{scorers_str}. Plenty more to come.",
+                f"Both sides have had moments — {score_str} at the interval. Neither can afford another mistake.",
+            ]
+        elif h_i > a_i:
+            opts = [
+                f"{team} will be pleased with that — {score_str} up{scorers_str}. {opponent} need to respond.",
+                f"The home side in the driving seat at half-time — {score_str}{scorers_str}. Can {opponent} find a way back?",
+            ]
+        else:
+            opts = [
+                f"{opponent} head in front at the break — {score_str}{scorers_str}. {team} will need to regroup.",
+                f"It's been {opponent}'s half — they lead {score_str} at the interval{scorers_str}. Tough watch for {team}.",
+            ]
+        return f"HALF-TIME! {random.choice(opts)}"
+
+    elif event_type == "FULL_TIME":
+        h, a = (score_str.split("-") if score_str and "-" in score_str else ("0", "0"))
+        h_i, a_i = int(h), int(a)
+        goals_list = [(p, g) for p, g in goals_by_player.items() if g >= 1]
+        hat_trick_player = next((p for p, g in goals_list if g >= 3), None)
+        brace_player = next((p for p, g in goals_list if g == 2), None)
+        margin = abs(h_i - a_i)
+        winner = team if h_i > a_i else (opponent if a_i > h_i else None)
+        loser = opponent if h_i > a_i else (team if a_i > h_i else None)
+        hero = f"{hat_trick_player} the hat-trick hero" if hat_trick_player else (f"{brace_player} with a brace" if brace_player else "")
+
+        if winner is None:
+            opts = [
+                f"FULL-TIME! A point apiece — {score_str}. {team} and {opponent} share the spoils in a breathless contest!",
+                f"FULL-TIME! It ends {score_str}! Honours even — but what a game it was!",
+            ]
+        elif margin >= 3:
+            opts = [
+                f"FULL-TIME! {winner.upper()} WIN CONVINCINGLY — {score_str}! A dominant display from start to finish.",
+                f"FULL-TIME! {loser.upper()} well beaten — {winner.upper()} run out {score_str} winners today!",
+            ]
+        elif red_cards and winner:
+            opts = [f"FULL-TIME! TEN-MAN {team.upper()} {'HOLD ON FOR AN INCREDIBLE WIN' if winner == team else 'FALL SHORT'} — {score_str}! What resilience!"]
+        else:
+            if (minute or 0) >= 88:
+                opts = [
+                    f"FULL-TIME! WHAT A FINISH! {winner.upper()} WIN IT {score_str} — DRAMA IN THE DYING MINUTES!",
+                    f"FULL-TIME! {winner.upper()} SNATCH IT AT THE DEATH — {score_str}! THE GROUND ERUPTS!",
+                ]
+            else:
+                opts = [
+                    f"FULL-TIME! {winner.upper()} WIN {score_str} against {opponent.upper()}. A well-deserved victory.",
+                    f"FULL-TIME! Three points for {winner.upper()} — {score_str}. {loser.upper()} will be disappointed.",
+                ]
+        result = random.choice(opts)
+        if hero:
+            result += f" {hero}."
+        if consequence:
+            result += f" {consequence}."
+        return result
+
+    return f"{event_type.replace('_', ' ')} — {team} {score_str} {opponent} at {min_str}."
+
+
+def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
+                           opponent: str | None, score: str | None, minute: int | None,
+                           match_state: dict, editorial_ctx: dict,
+                           stats_context: dict, processed: dict | None = None) -> list[dict]:
+    """Build Sky Sports stat overlay cards — grounded in actual data."""
+    processed = processed or {}
+    insights = []
+    facts = ((editorial_ctx or {}).get("commentator_facts") or {})
+    player_ctx = ((editorial_ctx or {}).get("player") or {})
+    team_ctx = ((editorial_ctx or {}).get("team") or {})
+    goals_by_player = (match_state or {}).get("goals_by_player", {})
+    red_cards = (match_state or {}).get("red_cards", [])
+    score_prog = (match_state or {}).get("score_progression", [])
+    player_goals_today = goals_by_player.get(player, 0) if player else 0
+    xg = processed.get("xG")
+    build_up = processed.get("build_up_players") or []
+    pressure = processed.get("pressure_index")
+    pass_acc = processed.get("pass_accuracy")
+    min_str = f"{minute}'" if minute else ""
+
+    # --- MILESTONE: hat-trick, brace, career milestone ---
+    if player and player_goals_today >= 3:
+        season_goals = player_ctx.get("season_goals")
+        if season_goals:
+            insights.append({"category": "milestone",
+                "line": f"HAT-TRICK for {player} — {player_goals_today} goals today, {season_goals} for the season. Unstoppable."})
+        else:
+            insights.append({"category": "milestone",
+                "line": f"HAT-TRICK! {player} has scored {player_goals_today} goals in this match — a stunning individual performance."})
+    elif player and player_goals_today == 2:
+        season_goals = player_ctx.get("season_goals")
+        if season_goals:
+            insights.append({"category": "milestone",
+                "line": f"BRACE for {player} — 2 goals today, {season_goals} for the season."})
+        else:
+            insights.append({"category": "milestone",
+                "line": f"{player} with his second of the match — {team} in the ascendancy."})
+    else:
+        # Show career milestone progress when available
+        career_goals = player_ctx.get("career_goals_at_club")
+        goals_to_milestone = player_ctx.get("goals_to_next_milestone")
+        next_milestone_label = player_ctx.get("next_milestone")
+        if career_goals and goals_to_milestone is not None and next_milestone_label:
+            target = career_goals + goals_to_milestone
+            insights.append({"category": "milestone",
+                "line": f"{player}: {career_goals} career goals for {team} — just {goals_to_milestone} away from {target}."})
+
+    # --- LEAGUE IMPACT ---
+    stakes_keys = ("stakes_line", "promotion_stakes", "promotion_consequence",
+                   "champions_league_stakes", "title_race")
+    stakes = next((facts.get(k) for k in stakes_keys if facts.get(k)), "")
+    if stakes:
+        insights.append({"category": "league_impact", "line": stakes})
+
+    # --- HOW IT WAS SCORED: xG + build-up combined ---
+    if event_type in ("GOAL", "PENALTY"):
+        ctx_parts = []
+        if xg is not None:
+            if xg >= 0.75:
+                ctx_parts.append(f"xG {xg:.2f} — a high-quality chance and {player} made no mistake")
+            elif xg >= 0.3:
+                ctx_parts.append(f"xG {xg:.2f} — a decent opportunity taken well by {player}")
+            elif xg >= 0.1:
+                ctx_parts.append(f"xG just {xg:.2f} — not the easiest, but {player} converted against the odds")
+            else:
+                ctx_parts.append(f"xG {xg:.2f} — barely a chance on paper, but what a finish from {player}!")
+        if build_up:
+            if len(build_up) >= 2:
+                ctx_parts.append(f"Assisted by {build_up[0]} and {build_up[1]}")
+            elif len(build_up) == 1:
+                ctx_parts.append(f"Assisted by {build_up[0]}")
+        if ctx_parts:
+            insights.append({"category": "match_context", "line": ". ".join(ctx_parts) + "."})
+
+    # --- RED CARD CONTEXT ---
+    if event_type == "RED_CARD" and red_cards:
+        rc = red_cards[-1]
+        mins_short = (minute or 0) - rc.get("minute", minute or 0)
+        if mins_short > 0:
+            insights.append({"category": "match_context",
+                "line": f"{rc.get('team')} have been a man short for {mins_short} minutes. {90 - (minute or 0)} left to play at {score}."})
+        if pressure and pressure >= 80:
+            insights.append({"category": "match_context",
+                "line": f"Pressure index was at {pressure} when {player} made that challenge — desperate defending."})
+
+    # --- VS OPPONENT CAREER RECORD ---
+    if player and opponent and event_type in ("GOAL", "PENALTY", "RED_CARD"):
+        opp_slug = opponent.lower().replace(" ", "_")
+        career_vs_opp = player_ctx.get(f"goals_vs_{opp_slug}_career")
+        apps_vs_opp = player_ctx.get(f"appearances_vs_{opp_slug}")
+        if career_vs_opp:
+            if apps_vs_opp:
+                insights.append({"category": "player_stat",
+                    "line": f"{player} has scored {career_vs_opp} career goals in {apps_vs_opp} appearances against {opponent}."})
+            else:
+                insights.append({"category": "player_stat",
+                    "line": f"{career_vs_opp} career goals for {player} against {opponent}."})
+
+    # --- PLAYER SEASON STATS (from historical CSV only) ---
+    if player and player_ctx and event_type in ("GOAL", "PENALTY"):
+        season_goals = player_ctx.get("season_goals")
+        season_assists = player_ctx.get("season_assists")
+        streak_data = player_ctx.get("scoring_streak") or {}
+        streak = (player_ctx.get("consecutive_scoring_matches") or
+                  player_ctx.get("consecutive_goal_involvements"))
+        streak_goals = streak_data.get("goals_in_longest_streak") if isinstance(streak_data, dict) else None
+        parts = []
+        if season_goals is not None:
+            goal_word = "goal" if season_goals == 1 else "goals"
+            parts.append(f"{season_goals} {goal_word} this season")
+        if season_assists is not None:
+            parts.append(f"{season_assists} assists")
+        if streak:
+            streak_str = f"scoring in {streak} consecutive matches"
+            if streak_goals:
+                streak_str += f" ({streak_goals} goals in that run)"
+            parts.append(streak_str)
+        if parts:
+            insights.append({"category": "player_stat",
+                "line": f"{player}: {', '.join(parts)}."})
+
+    # --- PASSING / CONTROL ---
+    if pass_acc and event_type in ("GOAL", "HALF_TIME", "FULL_TIME"):
+        if pass_acc >= 85:
+            insights.append({"category": "team_stat",
+                "line": f"{team} passing at {pass_acc}% accuracy — completely controlling the tempo of this game."})
+        elif pass_acc <= 72:
+            insights.append({"category": "team_stat",
+                "line": f"{team} struggling in possession — only {pass_acc}% pass accuracy so far, under real pressure."})
+
+    # --- TEAM STATS ---
+    if team_ctx:
+        points = team_ctx.get("points")
+        position = team_ctx.get("position") or team_ctx.get("league_position")
+        gd = team_ctx.get("goal_difference")
+        if points and position:
+            pos_int = int(position) if str(position).isdigit() else None
+            if pos_int:
+                suffix = "th" if 11 <= pos_int <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(pos_int % 10, "th")
+                pos_str = f"{pos_int}{suffix}"
+            else:
+                pos_str = str(position)
+            gd_str = f", GD {gd:+d}" if isinstance(gd, int) else ""
+            insights.append({"category": "team_stat",
+                "line": f"{team}: {points} pts, {pos_str} in the table{gd_str}."})
+
+    # --- HEAD TO HEAD ---
+    h2h = facts.get("head_to_head") or ""
+    if h2h:
+        # Avoid double "Head-to-head: Head-to-head (..." prefix
+        h2h_line = h2h if h2h.lower().startswith("head-to-head") else f"Head-to-head: {h2h}"
+        insights.append({"category": "head_to_head", "line": h2h_line})
+
+    # --- OPPONENT IMPACT ---
+    opp_impact = facts.get("opponent_consequence") or facts.get("opponent_stakes") or ""
+    if opp_impact:
+        insights.append({"category": "opponent_impact", "line": opp_impact})
+
+    return [i for i in insights if i.get("line")][:5]
 
 
 def _build_player_stat_line(editorial_ctx: dict, processed: dict) -> str | None:
@@ -523,17 +1065,62 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
                 "event_type": processed.get("event_type"),
                 "player": processed.get("player"),
                 "team": processed.get("team"),
+                "opponent": processed.get("opponent"),
                 "minute": processed.get("minute"),
                 "score": processed.get("score"),
+                "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
+                "xG": processed.get("xG"),
+                "pass_accuracy": processed.get("pass_accuracy"),
+                "pressure_index": processed.get("pressure_index"),
+                "x": processed.get("x"),
+                "y": processed.get("y"),
             })
         else:
             print(f"All insights for {fixture_id} were duplicates - skipped writing")
     except Exception as e:
         import traceback
-        logger.error(f"Error generating insight for {fixture_id}: {e}")
+        logger.error(f"AI insight generation failed for {fixture_id}, falling back to broadcaster: {e}")
         traceback.print_exc()
+        # --- Fallback: broadcaster generator so the event is never lost ---
+        try:
+            match_state = editorial_ctx.get("match_state", {})
+            event_type = processed.get("event_type", "").upper()
+            broadcaster_lead = _broadcaster_lead(
+                event_type, processed.get("player"), processed.get("team"),
+                processed.get("opponent"), processed.get("score"), processed.get("minute"),
+                match_state, editorial_ctx, processed,
+            )
+            broadcaster_insights = _broadcaster_insights(
+                event_type, processed.get("player"), processed.get("team"),
+                processed.get("opponent"), processed.get("score"), processed.get("minute"),
+                match_state, editorial_ctx, {}, processed,
+            )
+            if not broadcaster_insights:
+                broadcaster_insights = [{"category": "match_context", "line": broadcaster_lead}]
+            weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
+            write_insight(fixture_id, {
+                "lead_story": _sanitize(broadcaster_lead),
+                "insights": [{**i, "line": _sanitize(i.get("line", ""))} for i in broadcaster_insights],
+                "event_type": event_type,
+                "player": processed.get("player"),
+                "team": processed.get("team"),
+                "opponent": processed.get("opponent"),
+                "minute": processed.get("minute"),
+                "score": processed.get("score"),
+                "date": processed.get("date"),
+                "editorial_weight": weight,
+                "league": processed.get("league"),
+                "xG": processed.get("xG"),
+                "pass_accuracy": processed.get("pass_accuracy"),
+                "pressure_index": processed.get("pressure_index"),
+                "x": processed.get("x"),
+                "y": processed.get("y"),
+            })
+            logger.info(f"Broadcaster fallback written for {fixture_id} | {event_type}")
+        except Exception as fallback_err:
+            logger.error(f"Broadcaster fallback also failed for {fixture_id}: {fallback_err}")
 
 @app.post("/pubsub/push")
 async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
@@ -552,6 +1139,15 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
 
     if processed["status"] == "ignored":
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": processed["reason"]})
+
+    # Pub/Sub dedup — skip if we've already processed this exact event
+    dedup_key = _event_dedup_key(processed)
+    if fixture_id not in _processed_events:
+        _processed_events[fixture_id] = set()
+    if dedup_key in _processed_events[fixture_id]:
+        logger.info(f"Dedup: skipping {dedup_key} for {fixture_id}")
+        return JSONResponse(status_code=200, content={"status": "duplicate_ignored"})
+    _processed_events[fixture_id].add(dedup_key)
 
     # Layer 3 — pre-match stats from GCS (via sports_data which calls gcs_client)
     stats_context = get_context(processed)
@@ -583,44 +1179,91 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
 
     # Special handling for HALF_TIME and FULL_TIME - generate statistical summary
     event_type = processed.get("event_type", "").upper()
+    local_mode = os.environ.get("DISABLE_FIRESTORE", "").strip().lower() in {"1", "true", "yes", "on"}
+    ai_available = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY"))
+
     if event_type in {"HALF_TIME", "FULL_TIME"}:
-        # Build comprehensive match statistics
         match_stats = build_match_statistics(match_history, processed)
-        
-        # Generate statistical insights
         stat_insights = _build_match_summary_insights(match_stats, event_type, editorial_ctx)
-        
-        # For HALF_TIME and FULL_TIME, only filter duplicates within the current insights
-        # Don't filter against historical insights since these are summary moments
         filtered_insights = filter_duplicate_insights(stat_insights, set())
-        
-        # Write directly (no AI generation needed for stats)
+
+        # Replace the plain lead with broadcaster voice
+        broadcaster_lead = _broadcaster_lead(
+            event_type, processed.get("player"), processed.get("team"),
+            processed.get("opponent"), processed.get("score"), processed.get("minute"),
+            match_state, editorial_ctx, processed,
+        )
+        # Upgrade the first (lead) insight line to broadcaster voice too
         if filtered_insights:
-            # Use the narrative lead story from the first insight
-            narrative_lead = filtered_insights[0].get("line", f"{match_stats.get('home_team', 'Home')} {match_stats.get('score', '0-0')} {match_stats.get('away_team', 'Away')}")
+            filtered_insights[0]["line"] = _sanitize(broadcaster_lead)
+
+        if filtered_insights:
             weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
             write_insight(fixture_id, {
-                "lead_story": narrative_lead,
+                "lead_story": _sanitize(broadcaster_lead),
                 "insights": filtered_insights,
                 "event_type": event_type,
                 "player": None,
                 "team": processed.get("team"),
+                "opponent": processed.get("opponent"),
                 "minute": processed.get("minute"),
                 "score": processed.get("score"),
+                "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
+                "xG": processed.get("xG"),
+                "pass_accuracy": processed.get("pass_accuracy"),
+                "pressure_index": processed.get("pressure_index"),
+                "x": processed.get("x"),
+                "y": processed.get("y"),
             })
-        
         return JSONResponse(status_code=200, content={"status": "stats_generated"})
-    
-    # For other events, use AI generation
-    prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
-    allowed_facts = flatten_for_grounding(editorial_ctx)
 
-    # Persist AI insight asynchronously to avoid blocking the webhook
-    background_tasks.add_task(generate_and_save_insight, fixture_id, processed, prompt, allowed_facts, editorial_ctx)
+    # For all other events: use AI if available, else broadcaster stats generator
+    if ai_available and not local_mode:
+        prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
+        allowed_facts = flatten_for_grounding(editorial_ctx)
+        background_tasks.add_task(generate_and_save_insight, fixture_id, processed, prompt, allowed_facts, editorial_ctx)
+        return JSONResponse(status_code=200, content={"status": "processing_in_background"})
 
-    return JSONResponse(status_code=200, content={"status": "processing_in_background"})
+    # Local / no-AI path — broadcaster generator fires immediately
+    broadcaster_lead = _broadcaster_lead(
+        event_type, processed.get("player"), processed.get("team"),
+        processed.get("opponent"), processed.get("score"), processed.get("minute"),
+        match_state, editorial_ctx, processed,
+    )
+    broadcaster_insights = _broadcaster_insights(
+        event_type, processed.get("player"), processed.get("team"),
+        processed.get("opponent"), processed.get("score"), processed.get("minute"),
+        match_state, editorial_ctx, stats_context, processed,
+    )
+    used_lines = list(get_used_insight_lines(fixture_id))
+    filtered = filter_duplicate_insights(broadcaster_insights, set(used_lines))
+    if not filtered:
+        filtered = broadcaster_insights  # Always show something
+    # Sanitize unicode before storing
+    clean_lead = _sanitize(broadcaster_lead)
+    clean_insights = [{**i, "line": _sanitize(i.get("line", ""))} for i in filtered]
+    weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
+    write_insight(fixture_id, {
+        "lead_story": clean_lead,
+        "insights": clean_insights,
+        "event_type": event_type,
+        "player": processed.get("player"),
+        "team": processed.get("team"),
+        "opponent": processed.get("opponent"),
+        "minute": processed.get("minute"),
+        "score": processed.get("score"),
+        "date": processed.get("date"),
+        "editorial_weight": weight,
+        "league": processed.get("league"),
+        "xG": processed.get("xG"),
+        "pass_accuracy": processed.get("pass_accuracy"),
+        "pressure_index": processed.get("pressure_index"),
+        "x": processed.get("x"),
+        "y": processed.get("y"),
+    })
+    return JSONResponse(status_code=200, content={"status": "broadcaster_generated"})
 
 
 # ---------------------------------------------------------------------------
@@ -639,25 +1282,44 @@ def api_insights():
     return get_all_pending_insights()
 
 
-# ---------------------------------------------------------------------------
-# Statistician decisions — approve / reject
-# ---------------------------------------------------------------------------
+@app.get("/api/insights/stream")
+async def api_insights_stream():
+    """SSE endpoint — pushes insights only when Firestore data changes."""
+    from fastapi.responses import StreamingResponse
+    import asyncio as _aio
 
-@app.post("/decide/{fixture_id}/{insight_id}")
-def decide(fixture_id: str, insight_id: str, request: Request):
-    return JSONResponse(status_code=200, content={"status": "use_approve_or_reject"})
+    start_insights_listener()
 
+    async def event_generator():
+        last_ids: set[str] = set()
+        while True:
+            data = await _aio.get_event_loop().run_in_executor(
+                None, wait_for_snapshot_update, 25.0
+            )
+            current_ids = {d.get("id", "") for d in data}
+            if current_ids != last_ids or not last_ids:
+                last_ids = current_ids
+                # Serialize datetime objects for JSON
+                import json
+                from datetime import datetime as _dt
+                def _ser(obj):
+                    if isinstance(obj, _dt):
+                        return obj.isoformat()
+                    raise TypeError(type(obj).__name__)
+                payload = json.dumps(data, default=_ser)
+                yield f"data: {payload}\n\n"
+            else:
+                yield ": heartbeat\n\n"
 
-@app.post("/approve/{fixture_id}/{insight_id}")
-def approve(fixture_id: str, insight_id: str):
-    record_decision(fixture_id, insight_id, approved=True)
-    return {"status": "approved", "fixture_id": fixture_id, "insight_id": insight_id}
-
-
-@app.post("/reject/{fixture_id}/{insight_id}")
-def reject(fixture_id: str, insight_id: str):
-    record_decision(fixture_id, insight_id, approved=False)
-    return {"status": "rejected", "fixture_id": fixture_id, "insight_id": insight_id}
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/clear")
@@ -668,3 +1330,77 @@ def clear_dashboard():
     db = _fs.Client(project=os.environ.get("GCP_PROJECT", "avid-invention-484506-g9"))
     clear_all(db)
     return {"status": "cleared", "message": "Insights archived to training_data and dashboard cleared."}
+
+
+# ---------------------------------------------------------------------------
+# Historical Data page — test what the GCS CSV enrichment retrieves
+# ---------------------------------------------------------------------------
+
+@app.get("/historical-data", response_class=HTMLResponse)
+def historical_data_page(request: Request):
+    """Render a test page showing enriched CSV data from GCS for a given event."""
+    from event_lookup import enrich_event
+    from gcs_data_store import get_data_store
+
+    params = dict(request.query_params)
+
+    def _to_int(val):
+        try: return int(val) if val and val not in ("None", "") else None
+        except (ValueError, TypeError): return None
+
+    def _to_float(val):
+        try: return float(val) if val and val not in ("None", "") else None
+        except (ValueError, TypeError): return None
+
+    def _to_str(val):
+        return val.replace("None", "").strip() or None if val else None
+
+    query = {
+        "player": params.get("player", "").replace("None", "").strip(),
+        "team": params.get("team", "").replace("None", "").strip(),
+        "opponent": params.get("opponent", "").replace("None", "").strip(),
+        "date": params.get("date", "").replace("None", "").strip(),
+        "event_type": params.get("event_type", "GOAL"),
+        "fixture_id": params.get("fixture_id", "").replace("None", "").strip(),
+        "minute": _to_int(params.get("minute")),
+        "score": _to_str(params.get("score")),
+        "pass_accuracy": _to_float(params.get("pass_accuracy")),
+        "pressure_index": _to_int(params.get("pressure_index")),
+        "xG": _to_float(params.get("xG")),
+        "x": _to_float(params.get("x")),
+        "y": _to_float(params.get("y")),
+    }
+
+    enriched = None
+    raw_json = ""
+
+    # Only run lookup if at least one field is populated
+    if any([query["player"], query["team"], query["opponent"]]):
+        event = {
+            "event_type": query.get("event_type", ""),
+            "player": query.get("player"),
+            "team": query.get("team"),
+            "opponent": query.get("opponent"),
+            "date": query.get("date"),
+            "minute": query.get("minute"),
+            "score": query.get("score"),
+            "pass_accuracy": query.get("pass_accuracy"),
+            "pressure_index": query.get("pressure_index"),
+            "xG": query.get("xG"),
+            "x": query.get("x"),
+            "y": query.get("y"),
+        }
+        try:
+            store = get_data_store()
+            enriched = enrich_event(event, store)
+            raw_json = json.dumps(enriched, indent=2, default=str, ensure_ascii=False)
+        except Exception as e:
+            import traceback
+            raw_json = f"ERROR: {e}\n\n{traceback.format_exc()}"
+
+    return templates.TemplateResponse("historical_data.html", {
+        "request": request,
+        "query": query,
+        "enriched": enriched,
+        "raw_json": raw_json,
+    })

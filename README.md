@@ -95,10 +95,9 @@ Open `http://localhost:8080`
 |--------|------|---------|
 | `GET` | `/health` | Basic health check |
 | `GET` | `/` | Main dashboard |
-| `GET` | `/stats` | Stats and context page |
+| `GET` | `/api/insights` | Return live insights for dashboard clients |
 | `POST` | `/event` | Submit the two live event inputs |
-| `POST` | `/approve/{event_index}/{insight_index}` | Mark one insight as approved |
-| `POST` | `/reject/{event_index}/{insight_index}` | Mark one insight as rejected |
+| `POST` | `/api/clear` | Archive and clear live insight data |
 
 ## Example `POST /event` Payload
 
@@ -226,3 +225,15 @@ gcloud run deploy football-ai-poc \
   --allow-unauthenticated \
   --set-env-vars GROQ_API_KEY=your-key-here
 ```
+
+## Upload Historical CSV Data To GCS
+
+Use the uploader in `cloud_run_job/upload_historical_data.py` to push the CSV folders under the requested bucket prefix.
+
+```bash
+python cloud_run_job/upload_historical_data.py \
+  --source-dir historical-data \
+  --destination-prefix "premier leaguge data"
+```
+
+This preserves the source folder structure, so files will land under paths such as `gs://football-poc-stats-avid/premier leaguge data/Derby/derby_events.csv`.

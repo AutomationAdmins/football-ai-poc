@@ -71,10 +71,8 @@ def archive_insights(db):
 
 
 def clear_all(db):
-    """Archive insights then clear all collections."""
-    archive_insights(db)
-    
-    print("\nClearing 'insights' collection...")
+    """Clear ALL collections including training data."""
+    print("Clearing 'insights' collection...")
     delete_collection(db.collection("insights"), 50)
     
     print("Clearing 'match_log' collection...")
@@ -82,8 +80,11 @@ def clear_all(db):
     
     print("Clearing 'decisions' collection...")
     delete_collection(db.collection("decisions"), 50)
+
+    print("Clearing 'training_data' collection...")
+    delete_collection(db.collection("training_data"), 50)
     
-    print("Done! Database is clean.")
+    print("Done! All data cleared.")
 
 
 if __name__ == "__main__":

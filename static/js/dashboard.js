@@ -125,23 +125,6 @@ async function sendEvent() {
     }
 }
 
-async function decide(eventIndex, insightIndex, action) {
-    const endpoint = action === 'approve'
-        ? `/approve/${eventIndex}/${insightIndex}`
-        : `/reject/${eventIndex}/${insightIndex}`;
-    await fetch(endpoint, { method: 'POST' });
-
-    const item = document.getElementById(`insight-${eventIndex}-${insightIndex}`);
-    item.classList.add(action === 'approve' ? 'approved' : 'rejected');
-
-    const actionsDiv = document.getElementById(`acts-${eventIndex}-${insightIndex}`);
-    const badge = document.createElement('span');
-    badge.className = `decision-done ${action === 'approve' ? 'dec-approved' : 'dec-rejected'}`;
-    badge.textContent = action === 'approve' ? 'APPROVED' : 'REJECTED';
-    actionsDiv.innerHTML = '';
-    actionsDiv.appendChild(badge);
-}
-
 // Initialize defaults only on a fresh load, otherwise keep the most recently submitted values.
 (function initializeForm() {
     const params = new URLSearchParams(window.location.search);

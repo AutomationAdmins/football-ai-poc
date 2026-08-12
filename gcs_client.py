@@ -1,6 +1,5 @@
 import json
 import os
-from functools import lru_cache
 
 from google.cloud import storage
 
@@ -13,15 +12,6 @@ def _get_client() -> storage.Client:
     if _client is None:
         _client = storage.Client()
     return _client
-
-
-@lru_cache(maxsize=10)
-def get_prematch_stats(fixture_id: str) -> dict:
-    """Download and return pre-match stats JSON for a fixture from GCS."""
-    bucket = _get_client().bucket(_GCS_BUCKET)
-    blob = bucket.blob(f"pre-match/{fixture_id}.json")
-    data = blob.download_as_text()
-    return json.loads(data)
 
 
 def upload_prematch_stats(fixture_id: str, stats: dict) -> None:

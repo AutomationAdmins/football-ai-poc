@@ -73,7 +73,6 @@ function Badge({ label, type = 'light' }: { label: string; type?: 'light' | 'dar
 export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId: string; initialInsights: InsightItem[] }) {
   const [insights, setInsights] = useState<InsightItem[]>(initialInsights);
   const [isRefreshing, startRefresh] = useTransition();
-  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
 
   const items = [...insights].sort((a, b) => (b.minute || 0) - (a.minute || 0));
   const { home, away } = parseFixtureId(fixtureId);
@@ -92,24 +91,39 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
   }
 
   useEffect(() => {
-    const interval = setInterval(() => refreshInsights(), 500);
-    return () => clearInterval(interval);
-  }, []);
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let sseWorking = false;
 
-  async function decide(insightId: string, action: 'approve' | 'reject') {
-    setPendingActionId(insightId);
-    try {
-      const response = await fetch(`/api/decide/${fixtureId}/${insightId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      if (!response.ok) throw new Error('Action failed');
-      setInsights((current) => current.filter((item) => item.id !== insightId));
-    } finally {
-      setPendingActionId(null);
-    }
-  }
+    // Try SSE first
+    const es = new EventSource('/api/insights/stream');
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const filtered = (Array.isArray(data) ? data : []).filter((i: InsightItem) => i.fixture_id === fixtureId);
+        setInsights(filtered);
+        sseWorking = true;
+      } catch {}
+    };
+    es.onerror = () => {
+      // If SSE fails, fall back to polling
+      if (!sseWorking && !pollTimer) {
+        pollTimer = setInterval(async () => {
+          try {
+            const response = await fetch('/api/insights', { cache: 'no-store' });
+            if (response.ok) {
+              const data = await response.json();
+              const filtered = (Array.isArray(data) ? data : []).filter((i: InsightItem) => i.fixture_id === fixtureId);
+              setInsights(filtered);
+            }
+          } catch {}
+        }, 5000);
+      }
+    };
+    return () => {
+      es.close();
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [fixtureId]);
 
   return (
     <main className="shell">
@@ -156,8 +170,6 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
       ) : (
         <div className="timeline">
           {items.map((item, index) => {
-            const isProcessing = pendingActionId === item.id;
-
             return (
               <article className="event-card" key={item.id}>
                 <div className="event-card__header">
@@ -185,23 +197,6 @@ export default function MatchDetail({ fixtureId, initialInsights }: { fixtureId:
                       </li>
                     ))}
                   </ul>
-                </div>
-
-                <div className="event-card__actions">
-                  <button
-                    className="button button--approve"
-                    onClick={() => decide(item.id, 'approve')}
-                    disabled={isProcessing}
-                  >
-                    ✓ Approve
-                  </button>
-                  <button
-                    className="button button--reject"
-                    onClick={() => decide(item.id, 'reject')}
-                    disabled={isProcessing}
-                  >
-                    × Reject
-                  </button>
                 </div>
               </article>
             );

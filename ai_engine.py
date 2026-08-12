@@ -354,7 +354,12 @@ def generate_insights(prompt, allowed_facts, editorial_context: dict | None = No
             "lead_story": lead_story,
             "insights": grounded_insights,
         }
-    except Exception:
+    except Exception as e:
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"AI Generation failed: {e}")
+        logger.error(traceback.format_exc())
         if editorial_context is None:
             raise
 

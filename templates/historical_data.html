@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Data — Football AI POC</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        header {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            padding: 20px 30px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            border: 1px solid #333;
+        }
+        header h1 { color: #fff; font-size: 1.5rem; }
+        header p { color: #888; margin-top: 4px; font-size: 0.9rem; }
+
+        .controls {
+            background: #1a1a1a;
+            padding: 16px 24px;
+            border-radius: 10px;
+            margin-bottom: 24px;
+            border: 1px solid #333;
+        }
+        .controls form {
+            display: flex;
+            gap: 12px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field label { font-size: 0.75rem; color: #888; }
+        .controls select, .controls input, .controls button {
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background: #222;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .controls button {
+            background: #2563eb;
+            border-color: #2563eb;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .controls button:hover { background: #1d4ed8; }
+
+        .section {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .section-header {
+            background: #1a1a2e;
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #93c5fd;
+            border-bottom: 1px solid #333;
+        }
+        .section-body { padding: 16px 20px; overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        th {
+            text-align: left;
+            padding: 8px 10px;
+            background: #1e293b;
+            color: #93c5fd;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        td {
+            padding: 6px 10px;
+            border-top: 1px solid #222;
+            white-space: nowrap;
+        }
+        tr:hover td { background: #1a1a2e; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+        .badge-player { background: #1e40af; color: #93c5fd; }
+        .badge-team { background: #065f46; color: #6ee7b7; }
+        .badge-fixture { background: #78350f; color: #fcd34d; }
+        .badge-derby { background: #7c2d12; color: #fdba74; }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .empty-state p { font-size: 1.1rem; }
+
+        pre {
+            font-size: 0.78rem;
+            color: #aaa;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        a.back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: #93c5fd;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        a.back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <a class="back-link" href="/">← Back to Dashboard</a>
+    <header>
+        <h1>📊 Historical Premier League Data</h1>
+        <p>Testing view — shows data retrieved from GCS <code>football-poc-stats-avid/premier leaguge data/</code></p>
+    </header>
+
+    <div class="controls">
+        <form method="GET" action="/historical-data">
+            <div class="field">
+                <label>Player</label>
+                <input type="text" name="player" value="{{ query.player or '' }}" placeholder="e.g. Erling Haaland">
+            </div>
+            <div class="field">
+                <label>Team</label>
+                <input type="text" name="team" value="{{ query.team or '' }}" placeholder="e.g. Manchester City">
+            </div>
+            <div class="field">
+                <label>Opponent</label>
+                <input type="text" name="opponent" value="{{ query.opponent or '' }}" placeholder="e.g. Manchester United">
+            </div>
+            <div class="field">
+                <label>Date</label>
+                <input type="text" name="date" value="{{ query.date or '' }}" placeholder="e.g. 2026-09-13">
+            </div>
+            <div class="field">
+                <label>Event Type</label>
+                <select name="event_type">
+                    <option value="GOAL" {% if query.event_type == 'GOAL' %}selected{% endif %}>GOAL</option>
+                    <option value="ASSIST" {% if query.event_type == 'ASSIST' %}selected{% endif %}>ASSIST</option>
+                    <option value="RED_CARD" {% if query.event_type == 'RED_CARD' %}selected{% endif %}>RED_CARD</option>
+                    <option value="HALF_TIME" {% if query.event_type == 'HALF_TIME' %}selected{% endif %}>HALF_TIME</option>
+                    <option value="FULL_TIME" {% if query.event_type == 'FULL_TIME' %}selected{% endif %}>FULL_TIME</option>
+                </select>
+            </div>
+            <button type="submit">🔍 Lookup</button>
+        </form>
+    </div>
+
+    {% if enriched %}
+
+    {% if enriched.player_season_stats %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-player">PLAYER</span> Season Stats</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.player_season_stats.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.player_season_stats.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.player_club_summary %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-player">PLAYER</span> Club Summary</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.player_club_summary.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.player_club_summary.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.player_goal_log_entry %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-player">PLAYER</span> Goal Log Entry</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.player_goal_log_entry.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.player_goal_log_entry.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.player_vs_opponent %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-player">PLAYER</span> vs Opponent Record</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.player_vs_opponent.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.player_vs_opponent.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.team_vs_opponent_record %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-team">TEAM</span> vs Opponent Record</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.team_vs_opponent_record.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.team_vs_opponent_record.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.opponent_vs_team_record %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-team">OPPONENT</span> vs Team Record</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.opponent_vs_team_record.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.opponent_vs_team_record.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.team_league_history %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-team">TEAM</span> League History</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.team_league_history.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.team_league_history.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.opponent_league_history %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-team">OPPONENT</span> League History</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.opponent_league_history.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.opponent_league_history.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.fixture_leaders %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-fixture">FIXTURE</span> Leaders</div>
+        <div class="section-body">
+            {% for side, categories in enriched.fixture_leaders.items() %}
+            <h4 style="color:#93c5fd; margin: 12px 0 6px;">{{ side|upper }}</h4>
+            {% for category, rows in categories.items() %}
+            <p style="color:#aaa; font-size:0.8rem; margin:8px 0 4px;">{{ category|capitalize }}</p>
+            {% if rows %}
+            <table>
+                <tr>{% for key in rows[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                {% for row in rows[:5] %}
+                <tr>{% for val in row.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </table>
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.head_to_head_matches %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-derby">DERBY</span> Head-to-Head Matches</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.head_to_head_matches[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                {% for row in enriched.head_to_head_matches[:10] %}
+                <tr>{% for val in row.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.derby_fixture_leaders %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-derby">DERBY</span> Fixture Leaders</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.derby_fixture_leaders[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                {% for row in enriched.derby_fixture_leaders[:10] %}
+                <tr>{% for val in row.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.related_derby_events %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-derby">DERBY</span> Related Events</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.related_derby_events[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                {% for row in enriched.related_derby_events[:10] %}
+                <tr>{% for val in row.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if enriched.match_details %}
+    <div class="section">
+        <div class="section-header"><span class="badge badge-fixture">MATCH</span> Details</div>
+        <div class="section-body">
+            <table>
+                <tr>{% for key in enriched.match_details.keys() %}<th>{{ key }}</th>{% endfor %}</tr>
+                <tr>{% for val in enriched.match_details.values() %}<td>{{ val }}</td>{% endfor %}</tr>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state">
+        <p>Enter an event above and click <strong>Lookup</strong> to see the historical data retrieved from GCS.</p>
+        <p style="margin-top:12px; font-size:0.85rem; color:#555;">
+            Try: Player=Erling Haaland, Team=Manchester City, Opponent=Manchester United, Date=2026-09-13
+        </p>
+    </div>
+    {% endif %}
+
+    <div class="section" style="margin-top:30px;">
+        <div class="section-header">📡 Raw JSON Response</div>
+        <div class="section-body">
+            <pre>{{ raw_json }}</pre>
+        </div>
+    </div>
+</body>
+</html>

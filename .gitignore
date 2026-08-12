@@ -7,3 +7,27 @@ venv/
 .DS_Store
 *.Zone.Identifier
 *:Zone.Identifier
+
+# Python cache and test artifacts
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Logs and local env files
+*.log
+.env.local
+frontend/.env.local
+
+# Editor/OS clutter
+.vscode/
+.idea/
+Thumbs.db
+
+# Local ad-hoc assets
+Screenshot*.png

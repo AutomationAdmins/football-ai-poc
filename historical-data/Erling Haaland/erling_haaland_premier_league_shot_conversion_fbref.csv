@@ -1,0 +1,6 @@
+season,source,competition,matches,goals,shots,shots_on_target,goals_per_game,shots_per_game,shots_on_target_per_game,shot_conversion_pct,shot_on_target_conversion_pct,xg_per_game
+2022-2023,FBref pasted table,Premier League,35,36,123,60,1.029,3.514,1.714,29.27,60.00,
+2023-2024,FBref pasted table,Premier League,31,27,121,59,0.871,3.903,1.903,22.31,45.76,
+2024-2025,FBref pasted table,Premier League,31,22,109,60,0.710,3.516,1.935,20.18,36.67,
+2025-2026,FBref pasted table,Premier League,35,27,126,59,0.771,3.600,1.686,21.43,45.76,
+Total,FBref pasted table,Premier League,132,112,479,238,0.848,3.629,1.803,23.38,47.06,
