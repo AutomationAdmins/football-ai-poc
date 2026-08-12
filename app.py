@@ -57,6 +57,39 @@ app = FastAPI(title="Football AI Editorial Assistant")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+
+@app.on_event("startup")
+def _warm_caches():
+    """Pre-warm GCS DataStore on container boot so first event is fast."""
+    import time as _t
+    t0 = _t.monotonic()
+    from gcs_data_store import get_data_store
+    store = get_data_store()
+    store._ensure_loaded()
+    logger.info(f"GCS DataStore pre-warmed in {_t.monotonic() - t0:.2f}s — {len(store._cache)} CSVs loaded")
+
+
+# ---------------------------------------------------------------------------
+# In-process match history cache — avoids Firestore reads on events 2-N
+# ---------------------------------------------------------------------------
+_match_history_cache: dict[str, list[dict]] = {}  # fixture_id -> list of events
+
+
+def _get_cached_match_history(fixture_id: str) -> list[dict]:
+    """Return match history from in-process cache, falling back to Firestore on first call."""
+    if fixture_id not in _match_history_cache:
+        _match_history_cache[fixture_id] = get_match_history(fixture_id)
+    return list(_match_history_cache[fixture_id])
+
+
+def _append_to_history_cache(fixture_id: str, event: dict):
+    """Append an event to the in-process cache (and persist to Firestore)."""
+    if fixture_id not in _match_history_cache:
+        _match_history_cache[fixture_id] = []
+    _match_history_cache[fixture_id].append(event)
+    append_match_event(fixture_id, event)
+
+
 @app.get("/health")
 def health():
     return {"status": "healthy"}
@@ -1188,11 +1221,11 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(status_code=200, content={"status": "duplicate_ignored"})
     _processed_events[fixture_id].add(dedup_key)
 
-    # Layer 3 — pre-match stats from GCS (via sports_data which calls gcs_client)
+    # Layer 3 — pre-match stats from GCS (pre-warmed on startup, instant)
     stats_context = get_context(processed)
 
-    # Layer 2 — current match history from Firestore
-    match_history = get_match_history(fixture_id)
+    # Layer 2 — current match history (in-process cache, Firestore only on first access)
+    match_history = _get_cached_match_history(fixture_id)
 
     # Layer 1 — live match state (goals today, hat-tricks, etc.)
     match_state = build_match_state(match_history, processed)
@@ -1211,7 +1244,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     editorial_ctx = build_editorial_context(processed, stats_context)
     editorial_ctx["match_state"] = match_state
     editorial_ctx["player_performance"] = player_performance
-    editorial_ctx["used_insights"] = list(used_insight_lines)[:20]  # Limit to prevent prompt bloat
+    editorial_ctx["used_insights"] = list(used_insight_lines)[:5]  # Limit to prevent prompt bloat
 
     # Patch season_goals to include goals scored today (so 28 + 2 today = 30)
     if processed.get("player") and match_state:
@@ -1221,8 +1254,8 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
             if base_sg is not None:
                 editorial_ctx["player"]["season_goals"] = base_sg + goals_today
 
-    # Persist event to match log BEFORE background task (so next events see it)
-    append_match_event(fixture_id, processed)
+    # Persist event to match log AND in-process cache (so next events see it)
+    _append_to_history_cache(fixture_id, processed)
 
     # Special handling for HALF_TIME and FULL_TIME - generate statistical summary
     event_type = processed.get("event_type", "").upper()
@@ -1266,14 +1299,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
             })
         return JSONResponse(status_code=200, content={"status": "stats_generated"})
 
-    # For all other events: use AI if available, else broadcaster stats generator
-    if ai_available and not local_mode:
-        prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
-        allowed_facts = flatten_for_grounding(editorial_ctx)
-        background_tasks.add_task(generate_and_save_insight, fixture_id, processed, prompt, allowed_facts, editorial_ctx)
-        return JSONResponse(status_code=200, content={"status": "processing_in_background"})
-
-    # Local / no-AI path — broadcaster generator fires immediately
+    # BROADCASTER-FIRST: generate instant output, then optionally enrich with AI in background
     broadcaster_lead = _broadcaster_lead(
         event_type, processed.get("player"), processed.get("team"),
         processed.get("opponent"), processed.get("score"), processed.get("minute"),
@@ -1288,11 +1314,11 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     filtered = filter_duplicate_insights(broadcaster_insights, set(used_lines))
     if not filtered:
         filtered = broadcaster_insights  # Always show something
-    # Sanitize unicode before storing
+    filtered = _ensure_player_stat_insight(filtered, editorial_ctx, processed)
     clean_lead = _sanitize(broadcaster_lead)
     clean_insights = [{**i, "line": _sanitize(i.get("line", ""))} for i in filtered]
     weight = _compute_editorial_weight(processed, editorial_ctx, match_state)
-    write_insight(fixture_id, {
+    insight_payload = {
         "lead_story": clean_lead,
         "insights": clean_insights,
         "event_type": event_type,
@@ -1309,7 +1335,16 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         "pressure_index": processed.get("pressure_index"),
         "x": processed.get("x"),
         "y": processed.get("y"),
-    })
+    }
+    # Write broadcaster output immediately (instant)
+    write_insight(fixture_id, insight_payload)
+
+    # Optionally enrich with Gemini AI in background (non-blocking)
+    if ai_available and not local_mode:
+        prompt = build_insight_prompt(editorial_ctx, match_history=match_history)
+        allowed_facts = flatten_for_grounding(editorial_ctx)
+        background_tasks.add_task(generate_and_save_insight, fixture_id, processed, prompt, allowed_facts, editorial_ctx)
+
     return JSONResponse(status_code=200, content={"status": "broadcaster_generated"})
 
 
@@ -1377,6 +1412,7 @@ def clear_dashboard():
 
     # Always clear in-process caches regardless of mode
     _processed_events.clear()
+    _match_history_cache.clear()
     clear_mem_match_log()
     reset_data_store()
 

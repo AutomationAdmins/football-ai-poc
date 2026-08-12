@@ -197,7 +197,7 @@ CRITICAL ANTI-REPETITION RULE:
 The following insight lines have ALREADY been shown to viewers in earlier events.
 DO NOT repeat these exact phrases or very similar variations:
 
-{json.dumps(used_insights[:15], indent=2)}
+{json.dumps(used_insights[:5], indent=2)}
 
 Focus on NEW information:
 - What changed SINCE the last event (e.g., score change, red card impact)
@@ -390,9 +390,9 @@ CONTEXT
 
 {json.dumps(cleaned, indent=2, default=_json_safe)}
 
-Match History (events in this match before the current event)
+Match History (recent events in this match)
 
-{json.dumps(match_history or [], indent=2, default=_json_safe)}
+{json.dumps((match_history or [])[-3:], indent=2, default=_json_safe)}
 """
 
     return prompt
