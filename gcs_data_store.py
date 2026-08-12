@@ -126,3 +126,9 @@ def get_data_store() -> GCSDataStore:
     if _store is None:
         _store = GCSDataStore()
     return _store
+
+
+def reset_data_store():
+    """Reset the singleton so next access reloads all CSVs from source."""
+    global _store
+    _store = None

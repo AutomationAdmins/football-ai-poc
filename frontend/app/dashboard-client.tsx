@@ -168,7 +168,7 @@ export default function DashboardClient({ initialInsights }: { initialInsights: 
         <div className="hero__row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ margin: 0 }}>Soccer Saturday Intelligent Insight Generator</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <a href="https://football-poc-262513106870.us-central1.run.app/" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 12px', background: 'rgba(255,255,255,0.15)', borderRadius: '999px', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.2)' }}>
+            <a href="/api/insights" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 12px', background: 'rgba(255,255,255,0.15)', borderRadius: '999px', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.2)' }}>
               <span style={{ color: 'white', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.5px' }}>Insights</span>
             </a>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: '999px', cursor: 'pointer' }} onClick={refreshInsights}>

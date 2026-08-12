@@ -118,7 +118,12 @@ def clear_mem_insights():
     _snapshot_event.set()
 
 
+def clear_mem_match_log():
+    """Clear in-memory match log (local mode only)."""
+    _mem_match_log.clear()
 
+
+def get_pending_insights(fixture_id: str) -> list[dict]:
     """Return all pending insights for a fixture, newest first."""
     if _firestore_disabled():
         results = [i for i in _mem_insights if i.get("fixture_id") == fixture_id and i.get("status") == "pending"]

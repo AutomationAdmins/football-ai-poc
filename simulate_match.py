@@ -32,7 +32,7 @@ _DEFAULT_FIXTURE_IDS: dict[str, str] = {
     "leeds-sunderland":  "leeds-vs-sunderland-2025-08-02",
     "mancity-manutd":    "man-city-vs-man-utd-2025-03-15",
     "palace-spurs":      "crystal-palace-vs-tottenham-2025-03-15",
-    "mancity-manutd-2627": "man-city-vs-man-utd-2026-09-13",
+    "mancity-manutd-2627": "man-city-vs-man-utd-2027-04-19",
 }
 
 # ---------------------------------------------------------------------------

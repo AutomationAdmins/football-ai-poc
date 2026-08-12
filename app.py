@@ -40,11 +40,18 @@ _FIXTURE_ID = os.environ.get("FIXTURE_ID", "arsenal-vs-chelsea-2025-08-02")
 # ---------------------------------------------------------------------------
 # Pub/Sub deduplication — prevent re-delivery from inflating match state
 # ---------------------------------------------------------------------------
-_processed_events: dict[str, set[str]] = {}  # fixture_id -> set of event keys
+_processed_events: dict[str, set[str]] = {}  # fixture_id -> set of dedup keys
 
-def _event_dedup_key(event: dict) -> str:
-    """Generate a unique key for Pub/Sub event deduplication."""
-    return f"{event.get('event_type', '')}:{event.get('minute', '')}:{event.get('player', '')}"
+def _event_dedup_key(event: dict, message_id: str | None = None) -> str:
+    """Generate a dedup key for Pub/Sub event redelivery protection.
+
+    Prefer Pub/Sub message_id when available so re-simulations with new messages
+    are processed, while true redeliveries are ignored.
+    """
+    if message_id:
+        return f"msg:{message_id}"
+    # Fallback for local/manual sends that don't include Pub/Sub metadata.
+    return f"event:{event.get('event_type', '')}:{event.get('minute', '')}:{event.get('player', '')}"
 
 app = FastAPI(title="Football AI Editorial Assistant")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1145,6 +1152,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     envelope = await request.json()
     message = envelope.get("message", {})
     raw_data = message.get("data", "")
+    message_id = message.get("messageId") or message.get("message_id")
 
     try:
         event_data = json.loads(base64.b64decode(raw_data).decode("utf-8"))
@@ -1159,7 +1167,7 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(status_code=200, content={"status": "ignored", "reason": processed["reason"]})
 
     # Pub/Sub dedup — skip if we've already processed this exact event
-    dedup_key = _event_dedup_key(processed)
+    dedup_key = _event_dedup_key(processed, message_id)
     if fixture_id not in _processed_events:
         _processed_events[fixture_id] = set()
     if dedup_key in _processed_events[fixture_id]:
@@ -1342,16 +1350,24 @@ async def api_insights_stream():
 
 @app.post("/api/clear")
 def clear_dashboard():
-    """Archive insights to training_data/ then clear all live collections."""
+    """Archive insights to training_data/ then clear all live collections and caches."""
+    from gcs_data_store import reset_data_store
+    from firestore_client import clear_mem_match_log
+
+    # Always clear in-process caches regardless of mode
+    _processed_events.clear()
+    clear_mem_match_log()
+    reset_data_store()
+
     local_mode = os.environ.get("DISABLE_FIRESTORE", "").strip().lower() in {"1", "true", "yes", "on"}
     if local_mode:
         clear_mem_insights()
-        return {"status": "cleared", "message": "In-memory insights cleared."}
+        return {"status": "cleared", "message": "All caches and in-memory data cleared."}
     from clear_firestore import clear_all
     from google.cloud import firestore as _fs
     db = _fs.Client(project=os.environ.get("GCP_PROJECT", "avid-invention-484506-g9"))
     clear_all(db)
-    return {"status": "cleared", "message": "Insights archived to training_data and dashboard cleared."}
+    return {"status": "cleared", "message": "All caches cleared. Firestore archived and wiped."}
 
 
 # ---------------------------------------------------------------------------
