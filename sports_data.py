@@ -8,6 +8,22 @@ import copy
 from event_lookup import enrich_event
 from gcs_data_store import get_data_store
 
+
+def _safe_int(val) -> int:
+    """Convert a value to int, returning 0 on failure."""
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _safe_float(val) -> float:
+    """Convert a value to float, returning 0.0 on failure."""
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
 # Maps event type to which player/team counters to increment by 1
 _PLAYER_INCREMENTS = {
     "GOAL":      ["season_goals", "appearances"],
@@ -29,9 +45,12 @@ def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
     player_fields = _PLAYER_INCREMENTS.get(event_type, [])
     for player_stats in updated.get("player_stats", {}).values():
         for field in player_fields:
-            if field not in player_stats:
-                player_stats[field] = 0
-            player_stats[field] += 1
+            # Only default to 0 if field was never populated from CSV data
+            current = player_stats.get(field)
+            if current is None:
+                player_stats[field] = 1
+            else:
+                player_stats[field] = _safe_int(current) + 1
 
         # Add live event data (xG, position, build-up) to player context
         if event.get("xG") is not None:
@@ -44,9 +63,11 @@ def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
     team_fields = _TEAM_INCREMENTS.get(event_type, [])
     for team_stats in updated.get("team_stats", {}).values():
         for field in team_fields:
-            if field not in team_stats:
-                team_stats[field] = 0
-            team_stats[field] += 1
+            current = team_stats.get(field)
+            if current is None:
+                team_stats[field] = 1
+            else:
+                team_stats[field] = _safe_int(current) + 1
 
         # Add team-level live stats
         if event.get("pass_accuracy") is not None:
@@ -72,11 +93,45 @@ def _reshape_enriched(enriched: dict, event: dict) -> dict:
     # ── Player stats ──
     player_data: dict = {}
     if enriched.get("player_season_stats"):
-        player_data.update(enriched["player_season_stats"])
+        raw = enriched["player_season_stats"]
+        player_data.update(raw)
+        # Map CSV column names → editorial_context expected field names
+        if "Gls" in raw and "season_goals" not in player_data:
+            player_data["season_goals"] = _safe_int(raw["Gls"])
+        if "Ast" in raw and "season_assists" not in player_data:
+            player_data["season_assists"] = _safe_int(raw["Ast"])
+        if "MP" in raw:
+            player_data["season_appearances"] = _safe_int(raw["MP"])
+        if "G+A" in raw:
+            player_data["season_goal_involvements"] = _safe_int(raw["G+A"])
+        if "Gls_per90" in raw:
+            player_data["goals_per_90"] = _safe_float(raw["Gls_per90"])
     if enriched.get("player_club_summary"):
-        player_data.update(enriched["player_club_summary"])
+        raw_club = enriched["player_club_summary"]
+        player_data.update(raw_club)
+        # Map club summary fields (career totals at club)
+        if "All Competitions Gls" in raw_club:
+            career_goals = _safe_int(raw_club["All Competitions Gls"])
+            player_data["career_goals_at_club"] = career_goals
+            # Compute milestone proximity
+            for milestone in [50, 100, 150, 200, 250]:
+                if career_goals < milestone:
+                    player_data["next_milestone"] = f"{milestone} career goals for {team_name}"
+                    player_data["goals_to_next_milestone"] = milestone - career_goals
+                    break
+        if "Domestic Leagues Gls" in raw_club:
+            player_data["league_goals_at_club"] = _safe_int(raw_club["Domestic Leagues Gls"])
     if enriched.get("player_vs_opponent"):
-        player_data["vs_opponent"] = enriched["player_vs_opponent"]
+        vs_opp = enriched["player_vs_opponent"]
+        player_data["vs_opponent"] = vs_opp
+        # Map opponent-specific goals for editorial_context
+        opp_slug = opponent_name.lower().replace(" ", "_")
+        if "Gls" in vs_opp:
+            player_data[f"goals_vs_{opp_slug}_career"] = _safe_int(vs_opp["Gls"])
+        if "Ast" in vs_opp:
+            player_data[f"assists_vs_{opp_slug}_career"] = _safe_int(vs_opp["Ast"])
+        if "MP" in vs_opp:
+            player_data[f"appearances_vs_{opp_slug}"] = _safe_int(vs_opp["MP"])
     if enriched.get("player_goal_log_entry"):
         player_data["latest_goal"] = enriched["player_goal_log_entry"]
     if enriched.get("player_assist_log_entry"):
@@ -88,7 +143,16 @@ def _reshape_enriched(enriched: dict, event: dict) -> dict:
     if enriched.get("player_vs_big6"):
         player_data["vs_big6"] = enriched["player_vs_big6"]
     if enriched.get("player_scoring_streak"):
-        player_data["scoring_streak"] = enriched["player_scoring_streak"]
+        streak_data = enriched["player_scoring_streak"]
+        player_data["scoring_streak"] = streak_data
+        # Extract consecutive scoring matches from streak data
+        if isinstance(streak_data, dict):
+            if "longest_scoring_streak_games" in streak_data:
+                player_data["consecutive_scoring_matches"] = _safe_int(streak_data["longest_scoring_streak_games"])
+        elif isinstance(streak_data, list) and streak_data:
+            # Take the most recent/longest streak
+            best = max(streak_data, key=lambda s: _safe_int(s.get("longest_scoring_streak_games", 0)))
+            player_data["consecutive_scoring_matches"] = _safe_int(best.get("longest_scoring_streak_games", 0))
     if enriched.get("player_shot_conversion"):
         player_data["shot_conversion"] = enriched["player_shot_conversion"]
     if player_data:
@@ -98,9 +162,36 @@ def _reshape_enriched(enriched: dict, event: dict) -> dict:
     # ── Team stats ──
     team_data: dict = {}
     if enriched.get("team_vs_opponent_record"):
-        team_data.update(enriched["team_vs_opponent_record"])
+        raw_opp = enriched["team_vs_opponent_record"]
+        team_data.update(raw_opp)
+        # Map opponent record fields
+        if "Wins" in raw_opp:
+            team_data["wins_vs_opponent"] = _safe_int(raw_opp["Wins"])
+        if "Draws" in raw_opp:
+            team_data["draws_vs_opponent"] = _safe_int(raw_opp["Draws"])
+        if "Losses" in raw_opp:
+            team_data["losses_vs_opponent"] = _safe_int(raw_opp["Losses"])
+        if "Goals For" in raw_opp:
+            team_data["goals_for_vs_opponent"] = _safe_int(raw_opp["Goals For"])
+        if "Goals Against" in raw_opp:
+            team_data["goals_against_vs_opponent"] = _safe_int(raw_opp["Goals Against"])
+        if "Goal Difference" in raw_opp:
+            gd = raw_opp["Goal Difference"]
+            if isinstance(gd, str) and gd.startswith("+"):
+                gd = gd[1:]
+            team_data["goal_difference"] = _safe_int(gd)
     if enriched.get("team_league_history"):
-        team_data.update(enriched["team_league_history"])
+        raw_league = enriched["team_league_history"]
+        team_data.update(raw_league)
+        # Map league history fields
+        if "League Rank" in raw_league and "league_position" not in team_data:
+            team_data["league_position"] = raw_league["League Rank"]
+        if "Points" in raw_league and "points" not in team_data:
+            team_data["points"] = _safe_int(raw_league["Points"])
+        if "Top Team Scorer" in raw_league:
+            team_data["top_scorer"] = raw_league["Top Team Scorer"]
+        if "Goals For" in raw_league and "goals_scored_this_season" not in team_data:
+            team_data["goals_scored_this_season"] = _safe_int(raw_league["Goals For"])
     if enriched.get("team_recent_form"):
         team_data["recent_form"] = enriched["team_recent_form"]
     if enriched.get("team_scoring_streaks"):

@@ -129,6 +129,31 @@ def _first_match_in(df: pd.DataFrame, col: str, values: set[str]) -> Optional[di
     return matched.iloc[0].dropna().to_dict()
 
 
+def _latest_row(df: pd.DataFrame, col: str) -> Optional[dict]:
+    """Return the row with the most recent season value as a fallback."""
+    if df.empty:
+        return None
+    # Try to find the max season value (works for formats like "2025-2026", "2025", etc.)
+    season_vals = df[col].astype(str).str.strip()
+    try:
+        max_season = season_vals.max()
+        mask = season_vals == max_season
+        matched = df.loc[mask]
+        if not matched.empty:
+            return matched.iloc[0].dropna().to_dict()
+    except Exception:
+        pass
+    return df.iloc[0].dropna().to_dict()
+
+
+def _first_match_or_latest(df: pd.DataFrame, col: str, values: set[str]) -> Optional[dict]:
+    """Try exact season match first; if not found, fall back to the most recent row."""
+    result = _first_match_in(df, col, values)
+    if result:
+        return result
+    return _latest_row(df, col)
+
+
 def _all_matches(df: pd.DataFrame, col: str, value: str) -> list[dict]:
     """Return all rows where col == value as list of dicts."""
     mask = df[col].astype(str).str.strip() == value
@@ -234,13 +259,15 @@ def lookup_player_assist_log(player_files: list, date: str, minute: Optional[int
 
 def lookup_player_season_stats(player_files: list, date: str) -> Optional[dict]:
     """Get the player's standard stats for the season containing the given date.
-    Prefers standard_stats_with_shooting over plain standard_stats."""
+    Prefers standard_stats_with_shooting over plain standard_stats.
+    Falls back to the most recent season if exact match not found."""
     seasons = get_season_from_date(date)
     if not seasons:
         return None
     season_variants = set(seasons.values())
     # Sort so _with_shooting comes first (reverse alpha puts 'w' before 's')
     sorted_files = sorted(player_files, key=lambda x: x[0], reverse=True)
+    # First pass: exact season match
     for key, df in sorted_files:
         if "standard_stats" not in key.lower():
             continue
@@ -250,11 +277,37 @@ def lookup_player_season_stats(player_files: list, date: str) -> Optional[dict]:
         result = _first_match_in(df, season_col, season_variants)
         if result:
             return result
-    return None
+    # Second pass: fall back to most recent Premier League row across all files
+    best_result = None
+    best_season = ""
+    for key, df in sorted_files:
+        if "standard_stats" not in key.lower():
+            continue
+        season_col = _get_season_col(df)
+        if not season_col:
+            continue
+        # Filter to Premier League rows only for fallback
+        comp_col = None
+        for c in df.columns:
+            if c.lower() in ("comp", "competition"):
+                comp_col = c
+                break
+        if comp_col:
+            league_df = df[df[comp_col].astype(str).str.contains("Premier League", case=False, na=False)]
+            if not league_df.empty:
+                row = league_df.iloc[-1].dropna().to_dict()
+                row_season = str(row.get(season_col, ""))
+                if row_season > best_season:
+                    best_season = row_season
+                    best_result = row
+        elif best_result is None:
+            best_result = _latest_row(df, season_col)
+    return best_result
 
 
 def lookup_player_club_summary(player_files: list, date: str) -> Optional[dict]:
-    """Get the player's club summary for the relevant season."""
+    """Get the player's club summary for the relevant season.
+    Falls back to the most recent season if exact match not found."""
     seasons = get_season_from_date(date)
     if not seasons:
         return None
@@ -265,7 +318,7 @@ def lookup_player_club_summary(player_files: list, date: str) -> Optional[dict]:
         season_col = _get_season_col(df)
         if not season_col:
             continue
-        result = _first_match_in(df, season_col, season_variants)
+        result = _first_match_or_latest(df, season_col, season_variants)
         if result:
             return result
     return None
@@ -334,7 +387,8 @@ def lookup_fixture_leaders(team_files: list) -> dict[str, list[dict]]:
 
 
 def lookup_team_league_history(team_files: list, date: str) -> Optional[dict]:
-    """Get the team's league history entry for the season containing the date."""
+    """Get the team's league history entry for the season containing the date.
+    Falls back to the most recent season if exact match not found."""
     seasons = get_season_from_date(date)
     if not seasons:
         return None
@@ -345,7 +399,7 @@ def lookup_team_league_history(team_files: list, date: str) -> Optional[dict]:
         season_col = _get_season_col(df)
         if not season_col:
             continue
-        result = _first_match_in(df, season_col, season_variants)
+        result = _first_match_or_latest(df, season_col, season_variants)
         if result:
             return result
     return None
@@ -441,7 +495,8 @@ def lookup_player_vs_big6(player_files: list, opponent: str) -> Optional[dict]:
 
 
 def lookup_player_scoring_streak(player_files: list, date: str) -> Optional[dict]:
-    """Return the current season's longest scoring streak."""
+    """Return the current season's longest scoring streak.
+    Falls back to the most recent season if exact match not found."""
     seasons = get_season_from_date(date)
     if not seasons:
         return None
@@ -452,7 +507,7 @@ def lookup_player_scoring_streak(player_files: list, date: str) -> Optional[dict
         season_col = _get_season_col(df)
         if not season_col:
             continue
-        result = _first_match_in(df, season_col, season_variants)
+        result = _first_match_or_latest(df, season_col, season_variants)
         if result:
             return result
     return None
@@ -470,8 +525,8 @@ def lookup_player_shot_conversion(player_files: list, date: str) -> Optional[dic
         season_col = _get_season_col(df)
         if not season_col:
             continue
-        # Get season row
-        season_row = _first_match_in(df, season_col, season_variants)
+        # Get season row (fall back to latest)
+        season_row = _first_match_or_latest(df, season_col, season_variants)
         # Get total row
         total_row = _first_match(df, season_col, "Total")
         if season_row or total_row:

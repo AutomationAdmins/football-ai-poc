@@ -61,7 +61,9 @@
                     
                     <div class="lead-line" style="font-size: 1.15em; line-height: 1.5; border-left: 3px solid #1f6feb; padding-left: 14px; margin-bottom: 20px;">{{ insight.lead_story }}</div>
                     
-                    <a href="/historical-data?player={{ insight.player|default('')|urlencode }}&team={{ insight.team|default('')|urlencode }}&opponent={{ insight.opponent|default('')|urlencode }}&event_type={{ insight.event_type|default('GOAL')|urlencode }}&date={{ insight.date|default('')|urlencode }}&fixture_id={{ insight.fixture_id|default('')|urlencode }}" style="display:inline-block; font-size:0.75em; background:#6e40c9; color:#fff; padding:4px 10px; border-radius:4px; text-decoration:none; margin-bottom:14px;">📊 View Historical Data Fed to Model</a>
+                    <a href="/historical-data?player={{ insight.player|default('')|urlencode }}&team={{ insight.team|default('')|urlencode }}&opponent={{ insight.opponent|default('')|urlencode }}&event_type={{ insight.event_type|default('GOAL')|urlencode }}&date={{ insight.date|default('')|urlencode }}&fixture_id={{ insight.fixture_id|default('')|urlencode }}&minute={{ insight.minute|default('')|urlencode }}&score={{ insight.score|default('')|urlencode }}&pass_accuracy={{ insight.pass_accuracy|default('')|urlencode }}&pressure_index={{ insight.pressure_index|default('')|urlencode }}&xG={{ insight.xG|default('')|urlencode }}&x={{ insight.x|default('')|urlencode }}&y={{ insight.y|default('')|urlencode }}"
+   target="_blank" 
+   class="inline-flex items-center gap-2 mt-4 px-3 py-1.5 bg-blue-50/50 hover:bg-blue-50 text-blue-600 text-sm font-medium rounded-lg transition-colors border border-blue-100" style="display:inline-block; font-size:0.75em; background:#6e40c9; color:#fff; padding:4px 10px; border-radius:4px; text-decoration:none; margin-bottom:14px;">📊 View Historical Data Fed to Model</a>
 
                     <div style="background: #0d1117; border-radius: 8px; padding: 8px 16px;">
                         {% for item in insight.insights %}

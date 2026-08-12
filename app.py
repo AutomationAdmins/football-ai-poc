@@ -1312,11 +1312,18 @@ def historical_data_page(request: Request):
     # Only run lookup if at least one field is populated
     if any([query["player"], query["team"], query["opponent"]]):
         event = {
-            "event_type": query["event_type"],
-            "player": query["player"],
-            "team": query["team"],
-            "opponent": query["opponent"],
-            "date": query["date"],
+            "event_type": query.get("event_type", ""),
+            "player": query.get("player"),
+            "team": query.get("team"),
+            "opponent": query.get("opponent"),
+            "date": query.get("date"),
+            "minute": query.get("minute"),
+            "score": query.get("score"),
+            "pass_accuracy": query.get("pass_accuracy"),
+            "pressure_index": query.get("pressure_index"),
+            "xG": query.get("xG"),
+            "x": query.get("x"),
+            "y": query.get("y"),
         }
         try:
             store = get_data_store()
