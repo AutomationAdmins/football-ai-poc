@@ -86,6 +86,15 @@ def write_insight(fixture_id: str, insight: dict) -> str:
     if _firestore_disabled():
         doc_id = str(uuid.uuid4())
         _mem_insights.append({"id": doc_id, "fixture_id": fixture_id, "status": "pending", "created_at": datetime.now(timezone.utc), **clean})
+        # Notify SSE stream that new data is available
+        with _snapshot_lock:
+            global _latest_snapshot
+            _latest_snapshot = sorted(
+                [i for i in _mem_insights if i.get("status") == "pending"],
+                key=lambda x: x.get("created_at") or datetime.min.replace(tzinfo=timezone.utc),
+                reverse=True,
+            )
+        _snapshot_event.set()
         return doc_id
     db = _get_db()
     db.collection("insights").document(fixture_id).set({"fixture_id": fixture_id, "updated_at": datetime.now(timezone.utc)}, merge=True)
@@ -236,7 +245,16 @@ def wait_for_snapshot_update(timeout: float = 30.0) -> list[dict]:
     _snapshot_event.wait(timeout=timeout)
     _snapshot_event.clear()
     with _snapshot_lock:
-        return list(_latest_snapshot)
+        if _latest_snapshot:
+            return list(_latest_snapshot)
+    # Fallback for local mode if snapshot was never populated
+    if _firestore_disabled():
+        return sorted(
+            [i for i in _mem_insights if i.get("status") == "pending"],
+            key=lambda x: x.get("created_at") or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+    return []
 
 
 def get_latest_snapshot() -> list[dict]:
