@@ -347,6 +347,19 @@ def _fallback_insights(editorial_context: dict) -> list[dict]:
             "facts_used": [],
         })
 
+    # Event-type category filter — only return relevant categories
+    evt = str(event.get("event_type", "")).upper()
+    _allowed = {
+        "GOAL": {"milestone", "match_context", "player_stat"},
+        "PENALTY": {"milestone", "match_context", "player_stat"},
+        "RED_CARD": {"match_context", "milestone"},
+        "HALF_TIME": {"match_context", "tactical", "head_to_head", "milestone"},
+        "FULL_TIME": {"match_context", "tactical", "milestone", "league_impact", "player_stat"},
+    }
+    _cats = _allowed.get(evt, set())
+    if _cats:
+        insights = [i for i in insights if i.get("category") in _cats]
+
     return insights[:5]
 
 

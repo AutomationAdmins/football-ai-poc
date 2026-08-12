@@ -616,6 +616,19 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         insights.append({"category": "opponent_impact",
             "line": f"AND WHAT DOES THIS MEAN FOR {opponent.upper() if opponent else 'THE OPPOSITION'}?! {opp_impact}"})
 
+    # --- EVENT-TYPE CATEGORY FILTER ---
+    # Only return categories relevant to this event type
+    allowed = {
+        "GOAL": {"milestone", "match_context", "player_stat"},
+        "PENALTY": {"milestone", "match_context", "player_stat"},
+        "RED_CARD": {"match_context", "milestone"},
+        "HALF_TIME": {"match_context", "tactical", "head_to_head", "milestone"},
+        "FULL_TIME": {"match_context", "tactical", "milestone", "league_impact", "player_stat"},
+    }
+    cats = allowed.get(event_type, set())
+    if cats:
+        insights = [i for i in insights if i.get("category") in cats]
+
     return [i for i in insights if i.get("line")][:5]
 
 
@@ -1199,6 +1212,14 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
     editorial_ctx["match_state"] = match_state
     editorial_ctx["player_performance"] = player_performance
     editorial_ctx["used_insights"] = list(used_insight_lines)[:20]  # Limit to prevent prompt bloat
+
+    # Patch season_goals to include goals scored today (so 28 + 2 today = 30)
+    if processed.get("player") and match_state:
+        goals_today = match_state.get("goals_by_player", {}).get(processed["player"], 0)
+        if goals_today > 0 and isinstance(editorial_ctx.get("player"), dict):
+            base_sg = editorial_ctx["player"].get("season_goals")
+            if base_sg is not None:
+                editorial_ctx["player"]["season_goals"] = base_sg + goals_today
 
     # Persist event to match log BEFORE background task (so next events see it)
     append_match_event(fixture_id, processed)
