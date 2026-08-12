@@ -937,9 +937,9 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
                 
                 goal_count = len(scorer_strs)
                 if goal_count == 1:
-                    line = f"{team} goal: {scorer_strs[0]}"
+                    line = f"THE GOAL THAT MATTERED! {team}: {scorer_strs[0]}"
                 else:
-                    line = f"{team} with {goal_count} goals: {', '.join(scorer_strs)}"
+                    line = f"WHAT A PERFORMANCE FROM {team.upper()}! {goal_count} goals — {', '.join(scorer_strs)}"
                 
                 insights.append({
                     "category": "player_stat",
@@ -953,13 +953,13 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
             if count >= 3:
                 insights.append({
                     "category": "milestone",
-                    "line": f"A match ball for {player} — {count} goals and a hat-trick to remember",
+                    "line": f"OH WHAT A PERFORMANCE! {player.upper()} TAKES THE MATCH BALL — {count} goals and an absolutely sensational hat-trick! What a player!",
                     "facts_used": ["goals_by_player"]
                 })
             elif count == 2:
                 insights.append({
                     "category": "milestone",
-                    "line": f"{player} with a brace — two goals and a real impact on this game",
+                    "line": f"THE BRACE! {player} with two goals — a real match-winner and a devastating impact on this game!",
                     "facts_used": ["goals_by_player"]
                 })
     
@@ -992,7 +992,7 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
         if lines:
             insights.append({
                 "category": "tactical",
-                "line": ". ".join(lines),
+                "line": "THE NUMBERS TELL THE STORY! " + ". ".join(lines) + "!",
                 "facts_used": ["xG", "goals"]
             })
     
@@ -1009,14 +1009,12 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
         pass_diff = abs(home_pass - away_pass)
         
         if pass_leader == press_leader:
-            # Same team dominating both
             if pass_diff > 5:
-                tactic_line = f"{pass_leader} have controlled this game — more accurate in possession ({home_pass}% vs {away_pass}%) and pressing harder when they lose it"
+                tactic_line = f"TOTAL CONTROL! {pass_leader} have dominated this game — sharper in possession ({home_pass}% vs {away_pass}%) AND pressing harder when they lose it!"
             else:
-                tactic_line = f"{pass_leader} just about edging the tactical battle — passing at {home_pass}% accuracy and pressing with more intensity"
+                tactic_line = f"{pass_leader} just edging the tactical battle — passing at {home_pass}% and pressing with more intensity throughout!"
         else:
-            # Different teams excelling in different areas
-            tactic_line = f"{pass_leader} sharper on the ball ({home_pass}% vs {away_pass}% passing) but {press_leader} winning the pressing battle and forcing mistakes"
+            tactic_line = f"FASCINATING TACTICAL BATTLE! {pass_leader} sharper on the ball ({home_pass}% vs {away_pass}% passing) but {press_leader} winning the pressing duel and forcing mistakes!"
         
         insights.append({
             "category": "tactical",
@@ -1029,7 +1027,7 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
             leader = home_team if home_pass > away_pass else away_team
             insights.append({
                 "category": "tactical",
-                "line": f"{leader} have been the tidier team in possession, passing at {max(home_pass, away_pass):.0f}% compared to {min(home_pass, away_pass):.0f}%",
+                "line": f"THE TIDIER SIDE! {leader} have been far more composed in possession — {max(home_pass, away_pass):.0f}% pass accuracy vs {min(home_pass, away_pass):.0f}%!",
                 "facts_used": ["pass_accuracy"]
             })
     
@@ -1039,7 +1037,7 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
             mins_with_ten = minute - red["minute"]
             insights.append({
                 "category": "milestone",
-                "line": f"{red['player']} saw red at {red['minute']}' — {red['team']} have played the last {mins_with_ten} minutes with ten men",
+                "line": f"OFF! {red['player'].upper()} SAW RED AT {red['minute']}' — {red['team']} played the last {mins_with_ten} minutes with ten men! What drama!",
                 "facts_used": ["red_cards"]
             })
     
@@ -1048,13 +1046,13 @@ def _build_match_summary_insights(match_stats: dict, event_type: str, editorial_
         if var_count == 1:
             insights.append({
                 "category": "milestone",
-                "line": "VAR has been involved once today — always a talking point",
+                "line": "VAR INTERVENED TODAY — always a talking point and always controversial!",
                 "facts_used": ["var_decisions"]
             })
         else:
             insights.append({
                 "category": "milestone",
-                "line": f"VAR has intervened {var_count} times — a controversial afternoon",
+                "line": f"VAR HAS BEEN BUSY! {var_count} interventions today — what a controversial afternoon!",
                 "facts_used": ["var_decisions"]
             })
     
