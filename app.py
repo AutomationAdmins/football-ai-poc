@@ -25,6 +25,7 @@ from firestore_client import (
     start_insights_listener,
     wait_for_snapshot_update,
     get_latest_snapshot,
+    clear_mem_insights,
 )
 from match_state_tracker import (
     build_match_state,
@@ -1344,6 +1345,10 @@ async def api_insights_stream():
 @app.post("/api/clear")
 def clear_dashboard():
     """Archive insights to training_data/ then clear all live collections."""
+    local_mode = os.environ.get("DISABLE_FIRESTORE", "").strip().lower() in {"1", "true", "yes", "on"}
+    if local_mode:
+        clear_mem_insights()
+        return {"status": "cleared", "message": "In-memory insights cleared."}
     from clear_firestore import clear_all
     from google.cloud import firestore as _fs
     db = _fs.Client(project=os.environ.get("GCP_PROJECT", "avid-invention-484506-g9"))
