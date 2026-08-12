@@ -45,11 +45,10 @@ def _apply_increments(context: dict, event_type: str, event: dict) -> dict:
     player_fields = _PLAYER_INCREMENTS.get(event_type, [])
     for player_stats in updated.get("player_stats", {}).values():
         for field in player_fields:
-            # Only default to 0 if field was never populated from CSV data
+            # Only increment if CSV data already populated this field.
+            # Do NOT fabricate a season stat from a single live event.
             current = player_stats.get(field)
-            if current is None:
-                player_stats[field] = 1
-            else:
+            if current is not None:
                 player_stats[field] = _safe_int(current) + 1
 
         # Add live event data (xG, position, build-up) to player context

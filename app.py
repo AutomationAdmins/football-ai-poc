@@ -451,8 +451,7 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
     pass_acc = processed.get("pass_accuracy")
     min_str = f"{minute}'" if minute else ""
 
-    # --- MILESTONE: hat-trick, brace, season notes ---
-    notes = player_ctx.get("notes") or player_ctx.get("next_milestone") or ""
+    # --- MILESTONE: hat-trick, brace, career milestone ---
     if player and player_goals_today >= 3:
         season_goals = player_ctx.get("season_goals")
         if season_goals:
@@ -469,8 +468,15 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         else:
             insights.append({"category": "milestone",
                 "line": f"{player} with his second of the match — {team} in the ascendancy."})
-    elif notes and isinstance(notes, str) and len(notes) > 10:
-        insights.append({"category": "milestone", "line": notes})
+    else:
+        # Show career milestone progress when available
+        career_goals = player_ctx.get("career_goals_at_club")
+        goals_to_milestone = player_ctx.get("goals_to_next_milestone")
+        next_milestone_label = player_ctx.get("next_milestone")
+        if career_goals and goals_to_milestone is not None and next_milestone_label:
+            target = career_goals + goals_to_milestone
+            insights.append({"category": "milestone",
+                "line": f"{player}: {career_goals} career goals for {team} — just {goals_to_milestone} away from {target}."})
 
     # --- LEAGUE IMPACT ---
     stakes_keys = ("stakes_line", "promotion_stakes", "promotion_consequence",
@@ -479,29 +485,28 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
     if stakes:
         insights.append({"category": "league_impact", "line": stakes})
 
-    # --- SHOT QUALITY / HOW IT WAS SCORED ---
-    if xg is not None and event_type in ("GOAL", "PENALTY"):
-        if xg >= 0.75:
-            xg_line = f"High-quality chance, xG {xg:.2f} - {player} made no mistake."
-        elif xg >= 0.3:
-            xg_line = f"A decent opportunity, xG {xg:.2f} - and {player} took it well."
-        elif xg >= 0.1:
-            xg_line = f"Not the easiest chance, xG just {xg:.2f} - but {player} converted against the odds."
-        else:
-            xg_line = f"Barely a chance on paper, xG {xg:.2f} - but what a finish from {player}!"
-        insights.append({"category": "match_context", "line": xg_line})
-
-    # --- BUILD-UP CREDIT ---
-    elif build_up and event_type in ("GOAL", "PENALTY"):
-        if len(build_up) >= 2:
-            insights.append({"category": "match_context",
-                "line": f"Brilliant combination from {build_up[0]} and {build_up[1]} to set up {player} - the assist play was outstanding."})
-        elif len(build_up) == 1:
-            insights.append({"category": "match_context",
-                "line": f"{build_up[0]} with the assist - a well-worked move that {player} finished brilliantly."})
+    # --- HOW IT WAS SCORED: xG + build-up combined ---
+    if event_type in ("GOAL", "PENALTY"):
+        ctx_parts = []
+        if xg is not None:
+            if xg >= 0.75:
+                ctx_parts.append(f"xG {xg:.2f} — a high-quality chance and {player} made no mistake")
+            elif xg >= 0.3:
+                ctx_parts.append(f"xG {xg:.2f} — a decent opportunity taken well by {player}")
+            elif xg >= 0.1:
+                ctx_parts.append(f"xG just {xg:.2f} — not the easiest, but {player} converted against the odds")
+            else:
+                ctx_parts.append(f"xG {xg:.2f} — barely a chance on paper, but what a finish from {player}!")
+        if build_up:
+            if len(build_up) >= 2:
+                ctx_parts.append(f"Assisted by {build_up[0]} and {build_up[1]}")
+            elif len(build_up) == 1:
+                ctx_parts.append(f"Assisted by {build_up[0]}")
+        if ctx_parts:
+            insights.append({"category": "match_context", "line": ". ".join(ctx_parts) + "."})
 
     # --- RED CARD CONTEXT ---
-    elif event_type == "RED_CARD" and red_cards:
+    if event_type == "RED_CARD" and red_cards:
         rc = red_cards[-1]
         mins_short = (minute or 0) - rc.get("minute", minute or 0)
         if mins_short > 0:
@@ -511,6 +516,42 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
             insights.append({"category": "match_context",
                 "line": f"Pressure index was at {pressure} when {player} made that challenge — desperate defending."})
 
+    # --- VS OPPONENT CAREER RECORD ---
+    if player and opponent and event_type in ("GOAL", "PENALTY", "RED_CARD"):
+        opp_slug = opponent.lower().replace(" ", "_")
+        career_vs_opp = player_ctx.get(f"goals_vs_{opp_slug}_career")
+        apps_vs_opp = player_ctx.get(f"appearances_vs_{opp_slug}")
+        if career_vs_opp:
+            if apps_vs_opp:
+                insights.append({"category": "player_stat",
+                    "line": f"{player} has scored {career_vs_opp} career goals in {apps_vs_opp} appearances against {opponent}."})
+            else:
+                insights.append({"category": "player_stat",
+                    "line": f"{career_vs_opp} career goals for {player} against {opponent}."})
+
+    # --- PLAYER SEASON STATS (from historical CSV only) ---
+    if player and player_ctx and event_type in ("GOAL", "PENALTY"):
+        season_goals = player_ctx.get("season_goals")
+        season_assists = player_ctx.get("season_assists")
+        streak_data = player_ctx.get("scoring_streak") or {}
+        streak = (player_ctx.get("consecutive_scoring_matches") or
+                  player_ctx.get("consecutive_goal_involvements"))
+        streak_goals = streak_data.get("goals_in_longest_streak") if isinstance(streak_data, dict) else None
+        parts = []
+        if season_goals is not None:
+            goal_word = "goal" if season_goals == 1 else "goals"
+            parts.append(f"{season_goals} {goal_word} this season")
+        if season_assists is not None:
+            parts.append(f"{season_assists} assists")
+        if streak:
+            streak_str = f"scoring in {streak} consecutive matches"
+            if streak_goals:
+                streak_str += f" ({streak_goals} goals in that run)"
+            parts.append(streak_str)
+        if parts:
+            insights.append({"category": "player_stat",
+                "line": f"{player}: {', '.join(parts)}."})
+
     # --- PASSING / CONTROL ---
     if pass_acc and event_type in ("GOAL", "HALF_TIME", "FULL_TIME"):
         if pass_acc >= 85:
@@ -519,23 +560,6 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
         elif pass_acc <= 72:
             insights.append({"category": "team_stat",
                 "line": f"{team} struggling in possession — only {pass_acc}% pass accuracy so far, under real pressure."})
-
-    # --- PLAYER SEASON STATS ---
-    if player and player_ctx and event_type in ("GOAL", "PENALTY"):
-        season_goals = player_ctx.get("season_goals")
-        season_assists = player_ctx.get("season_assists")
-        streak = (player_ctx.get("consecutive_scoring_matches") or
-                  player_ctx.get("consecutive_goal_involvements"))
-        parts = []
-        if season_goals is not None:
-            parts.append(f"{season_goals} goals this season")
-        if season_assists is not None:
-            parts.append(f"{season_assists} assists")
-        if streak:
-            parts.append(f"scoring in {streak} consecutive matches")
-        if parts:
-            insights.append({"category": "player_stat",
-                "line": f"{player}: {', '.join(parts)}."})
 
     # --- TEAM STATS ---
     if team_ctx:
@@ -554,9 +578,11 @@ def _broadcaster_insights(event_type: str, player: str | None, team: str | None,
                 "line": f"{team}: {points} pts, {pos_str} in the table{gd_str}."})
 
     # --- HEAD TO HEAD ---
-    h2h = facts.get("head_to_head")
+    h2h = facts.get("head_to_head") or ""
     if h2h:
-        insights.append({"category": "head_to_head", "line": f"Head-to-head: {h2h}"})
+        # Avoid double "Head-to-head: Head-to-head (..." prefix
+        h2h_line = h2h if h2h.lower().startswith("head-to-head") else f"Head-to-head: {h2h}"
+        insights.append({"category": "head_to_head", "line": h2h_line})
 
     # --- OPPONENT IMPACT ---
     opp_impact = facts.get("opponent_consequence") or facts.get("opponent_stakes") or ""
@@ -1045,6 +1071,11 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
                 "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
+                "xG": processed.get("xG"),
+                "pass_accuracy": processed.get("pass_accuracy"),
+                "pressure_index": processed.get("pressure_index"),
+                "x": processed.get("x"),
+                "y": processed.get("y"),
             })
         else:
             print(f"All insights for {fixture_id} were duplicates - skipped writing")
@@ -1081,6 +1112,11 @@ def generate_and_save_insight(fixture_id, processed, prompt, allowed_facts, edit
                 "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
+                "xG": processed.get("xG"),
+                "pass_accuracy": processed.get("pass_accuracy"),
+                "pressure_index": processed.get("pressure_index"),
+                "x": processed.get("x"),
+                "y": processed.get("y"),
             })
             logger.info(f"Broadcaster fallback written for {fixture_id} | {event_type}")
         except Exception as fallback_err:
@@ -1175,6 +1211,11 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
                 "date": processed.get("date"),
                 "editorial_weight": weight,
                 "league": processed.get("league"),
+                "xG": processed.get("xG"),
+                "pass_accuracy": processed.get("pass_accuracy"),
+                "pressure_index": processed.get("pressure_index"),
+                "x": processed.get("x"),
+                "y": processed.get("y"),
             })
         return JSONResponse(status_code=200, content={"status": "stats_generated"})
 
@@ -1216,6 +1257,11 @@ async def pubsub_push(request: Request, background_tasks: BackgroundTasks):
         "date": processed.get("date"),
         "editorial_weight": weight,
         "league": processed.get("league"),
+        "xG": processed.get("xG"),
+        "pass_accuracy": processed.get("pass_accuracy"),
+        "pressure_index": processed.get("pressure_index"),
+        "x": processed.get("x"),
+        "y": processed.get("y"),
     })
     return JSONResponse(status_code=200, content={"status": "broadcaster_generated"})
 
@@ -1297,13 +1343,32 @@ def historical_data_page(request: Request):
     from gcs_data_store import get_data_store
 
     params = dict(request.query_params)
+
+    def _to_int(val):
+        try: return int(val) if val and val not in ("None", "") else None
+        except (ValueError, TypeError): return None
+
+    def _to_float(val):
+        try: return float(val) if val and val not in ("None", "") else None
+        except (ValueError, TypeError): return None
+
+    def _to_str(val):
+        return val.replace("None", "").strip() or None if val else None
+
     query = {
-        "player": params.get("player", "").replace("None", ""),
-        "team": params.get("team", "").replace("None", ""),
-        "opponent": params.get("opponent", "").replace("None", ""),
-        "date": params.get("date", "").replace("None", ""),
+        "player": params.get("player", "").replace("None", "").strip(),
+        "team": params.get("team", "").replace("None", "").strip(),
+        "opponent": params.get("opponent", "").replace("None", "").strip(),
+        "date": params.get("date", "").replace("None", "").strip(),
         "event_type": params.get("event_type", "GOAL"),
-        "fixture_id": params.get("fixture_id", "").replace("None", ""),
+        "fixture_id": params.get("fixture_id", "").replace("None", "").strip(),
+        "minute": _to_int(params.get("minute")),
+        "score": _to_str(params.get("score")),
+        "pass_accuracy": _to_float(params.get("pass_accuracy")),
+        "pressure_index": _to_int(params.get("pressure_index")),
+        "xG": _to_float(params.get("xG")),
+        "x": _to_float(params.get("x")),
+        "y": _to_float(params.get("y")),
     }
 
     enriched = None
